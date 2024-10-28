@@ -1,0 +1,2 @@
+#Python
+当前模板包含最简单的Hello World以及运行指令的Python示例代码仓库
