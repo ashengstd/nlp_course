@@ -1,4 +1,17 @@
+# config dir
 .vscode
+
+# cache dir
 *.pyc
+*__pycache__/
+*.mypy_cache/
+*.ruff_cache/
+
+# data dir
 data/
+
+# python venv
 .venv/
+
+# other
+uv.lock
