@@ -1,4 +1,5 @@
 import json
+import random
 
 import torch
 
@@ -58,3 +59,30 @@ def parse_lines(lines, max_len, min_len):
             sentences = sentences[:-1]
         data.extend(sentences)
     return data
+
+
+class Dataloader:
+    BUFFER_SIZE = 409600  # 假设一个缓冲区大小
+
+    def __init__(self, tknizer, batch_size, max_len, min_len, filename):
+        self.tknizer = tknizer
+        self.batch_size = batch_size
+        self.max_len = max_len
+        self.min_len = min_len
+        self.filename = filename
+        self.epoch_id = 0
+
+    def __iter__(self):
+        with open(self.filename, encoding="UTF-8") as stream:
+            while True:
+                lines = stream.readlines(self.BUFFER_SIZE)
+                if not lines:
+                    self.epoch_id += 1
+                    stream.seek(0)
+                    lines = stream.readlines(self.BUFFER_SIZE)
+                data = parse_lines(lines[:-1], self.max_len, self.min_len)
+                random.shuffle(data)
+                idx = 0
+                while idx < len(data):
+                    yield batchify(data[idx : idx + self.batch_size], self.tknizer)
+                    idx += self.batch_size
