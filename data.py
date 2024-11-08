@@ -7,14 +7,15 @@ BUFFER_SIZE = 409600
 
 
 def Lists2Tensor(x_s, tknizer=None):
-    max_len = max([len(x) for x in x_s])
+    max_len = max(len(x) for x in x_s)
     y_s = []
     for x in x_s:
         if tknizer is not None:
             y = tknizer.token2idx(x) + [tknizer.padding_idx] * (max_len - len(x))
         else:
             y = x + [0] * (max_len - len(x))
-    y_s.append(y)
+        y_s.append(y)
+    return y_s
 
 
 def batchify(data, tknizer=None):
@@ -22,10 +23,10 @@ def batchify(data, tknizer=None):
     for x in data:
         inp.append(x[:-1])
         truth.append(x[1:])
-        mask.append(1 for i in range(len(x) - 1))
-    truth = torch.LongTensor(Lists2Tensor(x_s=truth, tknizer=tknizer).t_().contiguous())
-    inp = torch.LongTensor(Lists2Tensor(x_s=inp, tknizer=tknizer).t_().contiguous())
-    mask = torch.LongTensor(Lists2Tensor(x_s=mask).t_().contiguous())
+        mask.append([1 for i in range(len(x) - 1)])
+    truth = torch.LongTensor(Lists2Tensor(x_s=truth, tknizer=tknizer)).t_().contiguous()
+    inp = torch.LongTensor(Lists2Tensor(x_s=inp, tknizer=tknizer)).t_().contiguous()
+    mask = torch.LongTensor(Lists2Tensor(x_s=mask)).t_().contiguous()
     return truth, inp, mask
 
 
@@ -41,7 +42,7 @@ def s2t(strs, tknizer=None):
 
 def chunks(lst, n):
     n = max(1, n)
-    return (lst[i : i + n] for i in range(0, len(lst), n))
+    return [lst[i : i + n] for i in range(0, len(lst), n)]
 
 
 def parse_lines(lines, max_len, min_len):

@@ -47,20 +47,20 @@ class myGPT(nn.Module):
         cost = cost.view(y.shape)
         y_mask = y_mask.view(y.shape)
         cost = torch.sum(cost * y_mask, 0) / torch.sum(y_mask, 0) if avg else torch.sum(cost * y_mask, 0)
-        cost = cost.view((y.size(0), -1))
+        cost = cost.view((y.size(1), -1))
         ppl = 2**cost
         return cost.mean(), cost.sum().item(), ppl.sum().item()
 
     def ppl(self, truth, inp, msk):
         seq_len, bsz = inp.size()
-        self.attn_mask = self.attn_mask(seq_len)
+        self_attn_mask = self.attn_mask(seq_len)
         x = self.token_embed(inp) + self.position_embed(inp)
         x = self.emb_layer_norm(x)
         padding_mask = torch.eq(truth, self.vocab.padding_idx)
         if not padding_mask.any():
             padding_mask = None
         for layer in self.layers:
-            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self.attn_mask)
+            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask)
         x = self.one_more_layer_norm(gelu(self.one_more(x)))
         pred = torch.softmax(self.out_proj(x), dim=-1)
         _, pred_y = pred.max(dim=-1)
@@ -71,7 +71,7 @@ class myGPT(nn.Module):
 
     def work(self, inp):
         seq_len, bsz = inp.size()
-        self.attn_mask = self.attn_mask(seq_len)
+        self_attn_mask = self.attn_mask(seq_len)
         x = self.token_embed(inp) + self.position_embed(inp)
         x = self.emb_layer_norm(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
@@ -79,7 +79,7 @@ class myGPT(nn.Module):
         if not padding_mask.any():
             padding_mask = None
         for layer in self.layers:
-            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self.attn_mask)
+            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask)
         x = self.one_more_layer_norm(gelu(self.one_more(x)))
         probs = torch.softmax(self.out_proj(x), -1)
         _, pred_y = probs.max(-1)
@@ -109,7 +109,7 @@ class myGPT(nn.Module):
 
     def forward(self, truth, inp, msk):
         seq_len, bsz = inp.size()
-        self.attn_mask = self.attn_mask(seq_len)
+        self_attn_mask = self.attn_mask(seq_len)
         x = self.token_embed(inp) + self.position_embed(inp)
         x = self.emb_layer_norm(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
@@ -117,7 +117,7 @@ class myGPT(nn.Module):
         if not padding_mask.any():
             padding_mask = None
         for layer in self.layers:
-            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self.attn_mask)
+            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask)
         x = self.one_more_layer_norm(gelu(self.one_more(x)))
         pred = torch.softmax(self.out_proj(x), -1)
         loss, nll, ppl = self.nll_loss(pred, truth, msk)
