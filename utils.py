@@ -1,9 +1,8 @@
-import torch
-from torch import nn
-from torch.nn import Parameter
+import math
 from collections import defaultdict
 
-import math
+import torch
+from torch import nn
 
 
 def gelu(x):
@@ -42,7 +41,7 @@ def _get_full_incremental_state_key(module_instance, key):
         INCREMENTAL_STATE_INSTANCE_ID[module_name] += 1
         module_instance._mygpt_instance_id = INCREMENTAL_STATE_INSTANCE_ID[module_name]
 
-    return "{}.{}.{}".format(module_name, module_instance._mygpt_instance_id, key)
+    return f"{module_name}.{module_instance._mygpt_instance_id}.{key}"
 
 
 def get_incremental_state(module, incremental_state, key):

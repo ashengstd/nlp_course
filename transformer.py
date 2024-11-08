@@ -285,7 +285,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx):
 
 class SelfAttentionMask(nn.Module):
     def __init__(self, init_size=100, device=0):
-        super(SelfAttentionMask, self).__init__()
+        super().__init__()
         self.weights = SelfAttentionMask.get_mask(init_size)
         self.device = device
 
@@ -305,7 +305,7 @@ class LearnedPositionalEmbedding(nn.Module):
     """This module produces LearnedPositionalEmbedding."""
 
     def __init__(self, embedding_dim, init_size=1024, device=0):
-        super(LearnedPositionalEmbedding, self).__init__()
+        super().__init__()
         self.weights = nn.Embedding(init_size, embedding_dim)
         self.device = device
         self.reset_parameters()
@@ -325,7 +325,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
     """This module produces sinusoidal positional embeddings of any length."""
 
     def __init__(self, embedding_dim, init_size=1024, device=0):
-        super(SinusoidalPositionalEmbedding, self).__init__()
+        super().__init__()
         self.embedding_dim = embedding_dim
         self.weights = SinusoidalPositionalEmbedding.get_embedding(init_size, embedding_dim)
         self.device = device

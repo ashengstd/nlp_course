@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from transformer import Embedding, LearnedPositionalEmbedding, SelfAttentionMask, TransformerLayer
 from utils import LayerNorm, gelu
@@ -13,7 +14,7 @@ class myGPT(nn.Module):
 
         self.token_embed = Embedding(self.vocab.size, embed_dim, self.vocab.padding_idx)
         self.position_embed = LearnedPositionalEmbedding(embed_dim, device=local_rank)
-        self.layers = nn.ModuleList
+        self.layers = nn.ModuleList()
         for _ in range(layers):
             self.layers.append(
                 TransformerLayer(
@@ -67,3 +68,60 @@ class myGPT(nn.Module):
         acc = (torch.eq(pred_y, truth).float() * msk).sum().item()
         loss, nll, ppl = self.nll_loss(pred, truth, msk)
         return acc, nll, ppl, tnt_tokens, bsz
+
+    def work(self, inp):
+        seq_len, bsz = inp.size()
+        self.attn_mask = self.attn_mask(seq_len)
+        x = self.token_embed(inp) + self.position_embed(inp)
+        x = self.emb_layer_norm(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        padding_mask = torch.eq(inp, self.vocab.padding_idx)
+        if not padding_mask.any():
+            padding_mask = None
+        for layer in self.layers:
+            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self.attn_mask)
+        x = self.one_more_layer_norm(gelu(self.one_more(x)))
+        probs = torch.softmax(self.out_proj(x), -1)
+        _, pred_y = probs.max(-1)
+        return probs, pred_y
+
+    def work_incremental(self, inp, incremental_state=None):
+        seq_len, bsz = inp.size()
+        x = self.token_embed(inp) + self.position_embed(inp)
+        x = self.emb_layer_norm(x)
+        padding_mask = torch.eq(inp, self.vocab.padding_idx)
+        if not padding_mask.any():
+            padding_mask = None
+        if incremental_state is None:
+            self_attn_mask = self.attn_mask(seq_len)
+            incremental_state = {}
+        else:
+            x = x[-1, :, :].unsqueeze(0)
+            self_attn_mask = None
+        for layer in self.layers:
+            x, _, _ = layer.work_incremental(
+                x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask, incremental_state=incremental_state
+            )
+        x = self.one_more_layer_norm(gelu(self.one_more(x)))
+        probs = torch.softmax(self.out_proj(x), -1)
+        _, pred_y = probs.max(-1)
+        return probs, pred_y, incremental_state
+
+    def forward(self, truth, inp, msk):
+        seq_len, bsz = inp.size()
+        self.attn_mask = self.attn_mask(seq_len)
+        x = self.token_embed(inp) + self.position_embed(inp)
+        x = self.emb_layer_norm(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        padding_mask = torch.eq(inp, self.vocab.padding_idx)
+        if not padding_mask.any():
+            padding_mask = None
+        for layer in self.layers:
+            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self.attn_mask)
+        x = self.one_more_layer_norm(gelu(self.one_more(x)))
+        pred = torch.softmax(self.out_proj(x), -1)
+        loss, nll, ppl = self.nll_loss(pred, truth, msk)
+        _, pred_y = pred.max(-1)
+        tnt_tokens = msk.float().sum().item()
+        acc = (torch.eq(pred_y, truth).float() * msk).sum().item()
+        return (pred_y, truth), loss, acc, nll, ppl, tnt_tokens, bsz

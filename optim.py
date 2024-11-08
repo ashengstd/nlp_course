@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-
-
 class Optim:
     "Optim wrapper that implements rate."
 

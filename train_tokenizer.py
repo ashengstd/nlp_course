@@ -3,7 +3,7 @@ from collections import Counter
 from multiprocessing import Pool
 
 BUFSIZE = 10000
-ttype = "WordPiece"
+ttype = "char"
 
 
 def process(doc):

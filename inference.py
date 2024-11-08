@@ -1,16 +1,13 @@
-import torch
-from torch import nn
-import torch.nn.functional as F
-import random
-import numpy as np
-import copy
 import time
+
+import torch
 
 from mygpt import myGPT
 from tokenizer import Tokenizer
-from data import DataLoader, s2t
 
-mstime = lambda: int(round(time.time() * 1000))
+
+def mstime():
+    return int(round(time.time() * 1000))
 
 
 def init_model(m_path, device, vocab):
@@ -37,10 +34,8 @@ if __name__ == "__main__":
     max_len = 50
     qs = ["介绍下南京航空航天大学", "Please introduce Nanjing University of Aeronautics and Astronautics"]
     print(qs)
-    i = 0
-    for q in qs:
+    for i, q in enumerate(qs):
         start = mstime()
-        i += 1
         s = [[w for w in q]]
 
         r1 = greedy(lm_model, lm_vocab, device, s, max_len)
