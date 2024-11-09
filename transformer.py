@@ -11,7 +11,7 @@ from utils import LayerNorm, gelu, get_incremental_state, set_incremental_state
 class TransformerLayer(nn.Module):
     def __init__(self, embed_dim, ff_embed_dim, num_heads, dropout, with_external=False, weights_dropout=True):
         super().__init__()
-        self.self_attn = MultiheadAttention(embed_dim, num_heads, dropout, weights_dropout)
+        self.self_attention = MultiheadAttention(embed_dim, num_heads, dropout, weights_dropout)
         self.fc1 = nn.Linear(embed_dim, ff_embed_dim)
         self.fc2 = nn.Linear(ff_embed_dim, embed_dim)
         self.attn_layer_norm = LayerNorm(embed_dim)
@@ -19,7 +19,7 @@ class TransformerLayer(nn.Module):
         self.with_external = with_external
         self.dropout = dropout
         if self.with_external:
-            self.external_attn = MultiheadAttention(embed_dim, num_heads, dropout, weights_dropout)
+            self.external_attention = MultiheadAttention(embed_dim, num_heads, dropout, weights_dropout)
             self.external_layer_norm = LayerNorm(embed_dim)
         self.reset_parameters()
 
@@ -39,10 +39,9 @@ class TransformerLayer(nn.Module):
         external_padding_mask=None,
         need_weights=False,
     ):
-        # x: seq_len x bsz x embed_dim
         residual = x
         if kv is None:
-            x, self_attn = self.self_attn(
+            x, self_attn = self.self_attention(
                 query=x,
                 key=x,
                 value=x,
@@ -51,7 +50,7 @@ class TransformerLayer(nn.Module):
                 need_weights=need_weights,
             )
         else:
-            x, self_attn = self.self_attn(
+            x, self_attn = self.self_attention(
                 query=x,
                 key=kv,
                 value=kv,
@@ -65,7 +64,7 @@ class TransformerLayer(nn.Module):
 
         if self.with_external:
             residual = x
-            x, external_attn = self.external_attn(
+            x, external_attn = self.external_attention(
                 query=x,
                 key=external_memories,
                 value=external_memories,
@@ -87,9 +86,8 @@ class TransformerLayer(nn.Module):
         return x, self_attn, external_attn
 
     def work_incremental(self, x, self_padding_mask, self_attn_mask, incremental_state):
-        # x: seq_len x bsz x embed_dim
         residual = x
-        x, self_attn = self.self_attn(
+        x, self_attn = self.self_attention(
             query=x,
             key=x,
             value=x,
@@ -133,11 +131,6 @@ class MultiheadAttention(nn.Module):
     def forward(
         self, query, key, value, key_padding_mask=None, attn_mask=None, need_weights=False, incremental_state=None
     ):
-        """Input shape: Time x Batch x Channel
-        key_padding_mask: Time x batch
-        attn_mask:  tgt_len x src_len
-        """
-
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
             bidx = self._get_bidx(incremental_state)
@@ -152,10 +145,8 @@ class MultiheadAttention(nn.Module):
         assert key.size() == value.size()
 
         if qkv_same:
-            # self-attention
             q, k, v = self.in_proj_qkv(query)
         elif kv_same:
-            # encoder-decoder attention
             q = self.in_proj_q(query)
             k, v = self.in_proj_kv(key)
         else:
@@ -169,7 +160,6 @@ class MultiheadAttention(nn.Module):
         v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         if saved_state is not None:
-            # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
             if "prev_key" in saved_state:
                 prev_key = saved_state["prev_key"]
                 if bidx is not None:
@@ -188,9 +178,6 @@ class MultiheadAttention(nn.Module):
             self._set_input_buffer(incremental_state, saved_state)
 
         src_len = k.size(1)
-        # k,v: bsz*heads x src_len x dim
-        # q: bsz*heads x tgt_len x dim
-
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
 
@@ -198,7 +185,6 @@ class MultiheadAttention(nn.Module):
             attn_weights.masked_fill_(attn_mask.unsqueeze(0), float("-inf"))
 
         if key_padding_mask is not None:
-            # don't attend to padding symbols
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
             attn_weights.masked_fill_(key_padding_mask.transpose(0, 1).unsqueeze(1).unsqueeze(2), float("-inf"))
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
@@ -218,9 +204,7 @@ class MultiheadAttention(nn.Module):
         attn = self.out_proj(attn)
 
         if need_weights:
-            # maximum attention weight over heads
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-
             attn_weights, _ = attn_weights.max(dim=1)
             attn_weights = attn_weights.transpose(0, 1)
         else:
@@ -252,35 +236,20 @@ class MultiheadAttention(nn.Module):
         return F.linear(input, weight, bias)
 
     def _get_input_buffer(self, incremental_state):
-        return (
-            get_incremental_state(
-                self,
-                incremental_state,
-                "attn_state",
-            )
-            or {}
-        )
+        return get_incremental_state(self, incremental_state, "attn_state") or {}
 
     def _set_input_buffer(self, incremental_state, buffer):
-        set_incremental_state(
-            self,
-            incremental_state,
-            "attn_state",
-            buffer,
-        )
+        set_incremental_state(self, incremental_state, "attn_state", buffer)
 
     def _get_bidx(self, incremental_state):
-        if "bidx" in incremental_state:
-            return incremental_state["bidx"]
-        else:
-            return None
+        return incremental_state.get("bidx", None)
 
 
 def Embedding(num_embeddings, embedding_dim, padding_idx):
-    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
-    nn.init.normal_(m.weight, std=0.02)
-    nn.init.constant_(m.weight[padding_idx], 0)
-    return m
+    embedding = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+    nn.init.normal_(embedding.weight, std=0.02)
+    nn.init.constant_(embedding.weight[padding_idx], 0)
+    return embedding
 
 
 class SelfAttentionMask(nn.Module):
@@ -291,19 +260,15 @@ class SelfAttentionMask(nn.Module):
 
     @staticmethod
     def get_mask(size):
-        weights = torch.triu(torch.ones((size, size), dtype=torch.bool), 1)
-        return weights
+        return torch.triu(torch.ones((size, size), dtype=torch.bool), 1)
 
     def forward(self, size):
         if self.weights is None or size > self.weights.size(0):
             self.weights = SelfAttentionMask.get_mask(size)
-        res = self.weights[:size, :size].to(self.device).detach()
-        return res
+        return self.weights[:size, :size].to(self.device).detach()
 
 
 class LearnedPositionalEmbedding(nn.Module):
-    """This module produces LearnedPositionalEmbedding."""
-
     def __init__(self, embedding_dim, init_size=1024, device=0):
         super().__init__()
         self.weights = nn.Embedding(init_size, embedding_dim)
@@ -314,16 +279,12 @@ class LearnedPositionalEmbedding(nn.Module):
         nn.init.normal_(self.weights.weight, std=0.02)
 
     def forward(self, input, offset=0):
-        """Input is expected to be of size [seq_len x bsz]."""
         seq_len, bsz = input.size()
         positions = (offset + torch.arange(seq_len)).to(self.device)
-        res = self.weights(positions).unsqueeze(1).expand(-1, bsz, -1)
-        return res
+        return self.weights(positions).unsqueeze(1).expand(-1, bsz, -1)
 
 
 class SinusoidalPositionalEmbedding(nn.Module):
-    """This module produces sinusoidal positional embeddings of any length."""
-
     def __init__(self, embedding_dim, init_size=1024, device=0):
         super().__init__()
         self.embedding_dim = embedding_dim
@@ -332,10 +293,6 @@ class SinusoidalPositionalEmbedding(nn.Module):
 
     @staticmethod
     def get_embedding(num_embeddings, embedding_dim):
-        """Build sinusoidal embeddings.
-        This matches the implementation in tensor2tensor, but differs slightly
-        from the description in Section 3.5 of "Attention Is All You Need".
-        """
         half_dim = embedding_dim // 2
         emb = math.log(10000) / (half_dim - 1)
         emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
@@ -346,16 +303,9 @@ class SinusoidalPositionalEmbedding(nn.Module):
         return emb
 
     def forward(self, input, offset=0):
-        """Input is expected to be of size [seq_len x bsz]."""
         seq_len, bsz = input.size()
-        mx_position = seq_len + offset
-        if self.weights is None or mx_position > self.weights.size(0):
-            # recompute/expand embeddings if needed
-            self.weights = SinusoidalPositionalEmbedding.get_embedding(
-                mx_position,
-                self.embedding_dim,
-            )
-
+        max_position = seq_len + offset
+        if self.weights is None or max_position > self.weights.size(0):
+            self.weights = SinusoidalPositionalEmbedding.get_embedding(max_position, self.embedding_dim)
         positions = offset + torch.arange(seq_len)
-        res = self.weights.index_select(0, positions).unsqueeze(1).expand(-1, bsz, -1).to(self.device).detach()
-        return res
+        return self.weights.index_select(0, positions).unsqueeze(1).expand(-1, bsz, -1).to(self.device).detach()

@@ -16,7 +16,6 @@ def parse_config():
     parser.add_argument("--num_heads", type=int, default=12)
     parser.add_argument("--layers", type=int, default=12)
     parser.add_argument("--dropout", type=float, default=0.2)
-
     parser.add_argument("--train_data", type=str, default="./data/train.txt")
     parser.add_argument("--dev_data", type=str, default="./data/val_tiny.txt")
     parser.add_argument("--vocab", type=str, default="./model/vocab.txt")
@@ -33,10 +32,8 @@ def parse_config():
     parser.add_argument("--epoch", type=int, default=100)
     parser.add_argument("--start_from", type=str, default=None)
     parser.add_argument("--save_dir", type=str, default="ckpt")
-
     parser.add_argument("--approx", type=str, default="none")
     parser.add_argument("--fp16", action="store_true")
-
     return parser.parse_args()
 
 
@@ -56,11 +53,8 @@ def eval_epoch(lm_args, model, tknizer, label, batch_acm):
     ds = parse_lines(ds, lm_args.max_len, lm_args.min_len)
     batch_size = 10
     idx = 0
-    avg_nll = 0.0
-    avg_ppl = 0.0
-    avg_acc = 0.0
-    count_bsz = 0.0
-    count_tok = 0.0
+    avg_nll, avg_ppl, avg_acc = 0.0, 0.0, 0.0
+    count_bsz, count_tok = 0.0, 0.0
 
     while idx < len(ds):
         ys_truth, ys_inp, msk = batchify(ds[idx : idx + batch_size], tknizer)
@@ -75,17 +69,28 @@ def eval_epoch(lm_args, model, tknizer, label, batch_acm):
         idx += batch_size
 
     print(
-        "validating: label %s, batch_acm %d, acc %.6f, nll %.6f, ppl %.6f"
-        % (label, batch_acm, avg_acc / count_tok, avg_nll / count_bsz, avg_ppl / count_bsz),
+        (
+            f"validating: label {label}, batch_acm {batch_acm}, "
+            f"acc {avg_acc / count_tok:.6f}, nll {avg_nll / count_bsz:.6f}, "
+            f"ppl {avg_ppl / count_bsz:.6f}"
+        ),
         flush=True,
+    )
+
+
+def save_model(args, model, optimizer, train_data, batch_acm):
+    if not os.path.exists(args.save_dir):
+        os.mkdir(args.save_dir)
+    torch.save(
+        {"args": args, "model": model.state_dict(), "optimizer": optimizer.state_dict()},
+        f"{args.save_dir}/epoch{train_data.epoch_id}_batch_{batch_acm}",
     )
 
 
 def run(args):
     torch.manual_seed(1234)
-    print(f"vocab:{args.vocab}")
     tknizer = Tokenizer(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[])
-    print("vocab.size = %d" % tknizer.size, flush=True)
+    print(f"vocab.size = {tknizer.size}", flush=True)
 
     model = myGPT(0, tknizer, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
     if args.start_from is not None:
@@ -110,12 +115,12 @@ def run(args):
     while train_data.epoch_id <= args.epoch:
         model.train()
         for truth, inp, msk in train_data:
-            print(1)
             batch_acm += 1
             truth, inp, msk = truth.cuda(), inp.cuda(), msk.cuda()
 
             model.zero_grad()
             res, loss, acc, nll, ppl, ntokens, npairs = model(truth, inp, msk)
+            loss_acm += loss
             acc_acm += acc
             nll_acm += nll
             ppl_acm += ppl
@@ -129,32 +134,17 @@ def run(args):
 
             if batch_acm % args.print_every == 0:
                 print(
-                    "batch_acm %d, loss %.3f, acc %.3f, nll%.3f, ppl %.3f, x_acm %d, lr %.6f"
-                    % (
-                        batch_acm,
-                        loss_acm / args.print_every,
-                        acc_acm / ntokens_acm,
-                        nll_acm / nxs,
-                        ppl_acm / nxs,
-                        npairs_acm,
-                        optimizer._rate,
-                    ),
+                    f"batch_acm {batch_acm}, loss {loss_acm / args.print_every:.3f}, "
+                    f"acc {acc_acm / ntokens_acm:.3f}, nll {nll_acm / nxs:.3f}, "
+                    f"ppl {ppl_acm / nxs:.3f}, x_acm {npairs_acm}, lr {optimizer._rate:.6f}",
                     flush=True,
                 )
                 acc_acm, nll_acm, ppl_acm, ntokens_acm, loss_acm, nxs = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
             if batch_acm % args.save_every == 0:
-                if not os.path.exists(args.save_dir):
-                    os.mkdir(args.save_dir)
-                torch.save(
-                    {"args": args, "model": model.state_dict(), "optimizer": optimizer.state_dict()},
-                    "%s/epoch%d_batch_%d" % (args.save_dir, train_data.epoch_id, batch_acm),
-                )
-
+                save_model(args, model, optimizer, train_data, batch_acm)
                 model.eval()
-                eval_epoch(
-                    args, model, tknizer, "epoch-" + str(train_data.epoch_id) + "-acm-" + str(batch_acm), batch_acm
-                )
+                eval_epoch(args, model, tknizer, f"epoch-{train_data.epoch_id}-acm-{batch_acm}", batch_acm)
                 model.train()
 
 

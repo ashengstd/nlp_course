@@ -6,129 +6,91 @@ from transformer import Embedding, LearnedPositionalEmbedding, SelfAttentionMask
 from utils import LayerNorm, gelu
 
 
-class myGPT(nn.Module):
-    def __init__(self, local_rank, vocab, embed_dim, ff_embed_dim, num_heads, dropout, layers):
+class MyGPT(nn.Module):
+    def __init__(self, device, vocab, embed_dim, ff_embed_dim, num_heads, dropout, num_layers):
         super().__init__()
         self.vocab = vocab
         self.embed_dim = embed_dim
 
-        self.tok_embed = Embedding(self.vocab.size, embed_dim, self.vocab.padding_idx)
-        self.pos_embed = LearnedPositionalEmbedding(embed_dim, device=local_rank)
+        self.token_embedding = Embedding(self.vocab.size, embed_dim, self.vocab.padding_idx)
+        self.position_embedding = LearnedPositionalEmbedding(embed_dim, device=device)
 
-        self.layers = nn.ModuleList()
-        for i in range(layers):
-            self.layers.append(TransformerLayer(embed_dim, ff_embed_dim, num_heads, dropout))
-        self.emb_layer_norm = LayerNorm(embed_dim)
-        self.one_more = nn.Linear(embed_dim, embed_dim)
-        self.one_more_layer_norm = LayerNorm(embed_dim)
-        self.out_proj = nn.Linear(embed_dim, self.vocab.size)
+        self.layers = nn.ModuleList(
+            [TransformerLayer(embed_dim, ff_embed_dim, num_heads, dropout) for _ in range(num_layers)]
+        )
+        self.embedding_layer_norm = LayerNorm(embed_dim)
+        self.intermediate_linear = nn.Linear(embed_dim, embed_dim)
+        self.intermediate_layer_norm = LayerNorm(embed_dim)
+        self.output_projection = nn.Linear(embed_dim, self.vocab.size)
 
-        self.attn_mask = SelfAttentionMask(device=local_rank)
+        self.attention_mask = SelfAttentionMask(device=device)
 
         self.dropout = dropout
-        self.device = local_rank
+        self.device = device
 
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.constant_(self.one_more.bias, 0.0)
-        nn.init.normal_(self.one_more.weight, std=0.02)
-        nn.init.constant_(self.out_proj.bias, 0.0)
-        nn.init.normal_(self.out_proj.weight, std=0.02)
+        nn.init.constant_(self.intermediate_linear.bias, 0.0)
+        nn.init.normal_(self.intermediate_linear.weight, std=0.02)
+        nn.init.constant_(self.output_projection.bias, 0.0)
+        nn.init.normal_(self.output_projection.weight, std=0.02)
 
-    def nll_loss(self, y_pred, y, y_mask, avg=True):
-        cost = -torch.log(torch.gather(y_pred, 2, y.view(y.size(0), y.size(1), 1)))
-        cost = cost.view(y.shape)
-        y_mask = y_mask.view(y.shape)
-        if avg:
-            cost = torch.sum(cost * y_mask, 0) / torch.sum(y_mask, 0)
-        else:
-            cost - torch.sum(cost * y_mask, 0)
-        cost = cost.view((y.size(1), -1))
-        ppl = 2**cost
-        return cost.mean(), cost.sum().item(), ppl.sum().item()
+    def nll_loss(self, predictions, targets, mask, average=True):
+        log_probs = -torch.log(torch.gather(predictions, 2, targets.unsqueeze(2)))
+        log_probs = log_probs.view(targets.shape)
+        mask = mask.view(targets.shape)
+        log_probs = torch.sum(log_probs * mask, 0) / torch.sum(mask, 0) if average else torch.sum(log_probs * mask, 0)
+        log_probs = log_probs.view((targets.size(1), -1))
+        perplexity = 2**log_probs
+        return log_probs.mean(), log_probs.sum().item(), perplexity.sum().item()
 
-    def ppl(self, truth, inp, msk):
-        seq_len, bsz = inp.size()
-        self_attn_mask = self.attn_mask(seq_len)
-        x = self.tok_embed(inp) + self.pos_embed(inp)
-        x = self.emb_layer_norm(x)
-        padding_mask = torch.eq(truth, self.vocab.padding_idx)
-        if not padding_mask.any():
-            padding_mask = None
-        for layer in self.layers:
-            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask)
-
-            x = self.one_more_layer_norm(gelu(self.one_more(x)))
-            pred = torch.softmax(self.out_proj(x), -1)
-            _, pred_y = pred.max(-1)
-            tot_tokens = msk.float().sum().item()
-            acc = (torch.eq(pred_y, truth).float() * msk).sum().item()
-            loss, nll, ppl = self.nll_loss(pred, truth, msk)
-            return acc, nll, ppl, tot_tokens, bsz
-
-    def work(self, inp):
-        seq_len, bsz = inp.size()
-        self_attn_mask = self.attn_mask(seq_len)
-        x = self.tok_embed(inp) + self.pos_embed(inp)
-        x = self.emb_layer_norm(x)
+    def forward_pass(self, inputs, targets=None, mask=None, incremental_state=None):
+        seq_len, batch_size = inputs.size()
+        attention_mask = self.attention_mask(seq_len) if incremental_state is None else None
+        x = self.token_embedding(inputs) + self.position_embedding(inputs)
+        x = self.embedding_layer_norm(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
-        padding_mask = torch.eq(inp, self.vocab.padding_idx)
-        if not padding_mask.any():
-            padding_mask = None
-        for layer in self.layers:
-            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask)
-
-        x = self.one_more_layer_norm(gelu(self.one_more(x)))
-        probs = torch.softmax(self.out_proj(x), -1)
-
-        _, pred_y = probs.max(-1)
-
-        return probs, pred_y
-
-    def work_incremental(self, inp, incremental_state=None):
-        seq_len, bsz = inp.size()
-        x = self.tok_embed(inp) + self.pos_embed(inp)
-        x = self.emb_layer_norm(x)
-        padding_mask = torch.eq(inp, self.vocab.padding_idx)
-        if not padding_mask.any():
-            padding_mask = None
-
-        if incremental_state is None:
-            self_attn_mask = self.attn_mask(seq_len)
-            incremental_state = {}
-        else:
-            x = x[-1, :, :].unsqueeze(0)
-            self_attn_mask = None
+        padding_mask = torch.eq(targets if targets is not None else inputs, self.vocab.padding_idx)
+        padding_mask = None if not padding_mask.any() else padding_mask
 
         for layer in self.layers:
-            x, _, _ = layer.work_incremental(
-                x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask, incremental_state=incremental_state
-            )
+            if incremental_state is None:
+                x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=attention_mask)
+            else:
+                x, _, _ = layer.work_incremental(
+                    x[-1, :, :].unsqueeze(0),
+                    self_padding_mask=padding_mask,
+                    self_attn_mask=attention_mask,
+                    incremental_state=incremental_state,
+                )
 
-        x = self.one_more_layer_norm(gelu(self.one_more(x)))
-        probs = torch.softmax(self.out_proj(x), -1)
+        x = self.intermediate_layer_norm(gelu(self.intermediate_linear(x)))
+        probabilities = torch.softmax(self.output_projection(x), -1)
+        return probabilities
 
-        _, pred_y = probs.max(-1)
-        return probs, pred_y, incremental_state
+    def calculate_ppl(self, targets, inputs, mask):
+        predictions = self.forward_pass(inputs, targets)
+        _, predicted_tokens = predictions.max(-1)
+        total_tokens = mask.float().sum().item()
+        accuracy = (torch.eq(predicted_tokens, targets).float() * mask).sum().item()
+        loss, nll, perplexity = self.nll_loss(predictions, targets, mask)
+        return accuracy, nll, perplexity, total_tokens, inputs.size(1)
 
-    def forward(self, truth, inp, msk):
-        seq_len, bsz = inp.size()
-        self_attn_mask = self.attn_mask(seq_len)
-        x = self.tok_embed(inp) + self.pos_embed(inp)
-        x = self.emb_layer_norm(x)
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        padding_mask = torch.eq(truth, self.vocab.padding_idx)
-        if not padding_mask.any():
-            padding_mask = None
-        for layer in self.layers:
-            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask)
+    def generate(self, inputs):
+        probabilities = self.forward_pass(inputs)
+        _, predicted_tokens = probabilities.max(-1)
+        return probabilities, predicted_tokens
 
-        x = self.one_more_layer_norm(gelu(self.one_more(x)))
-        pred = torch.softmax(self.out_proj(x), -1)
+    def generate_incremental(self, inputs, incremental_state=None):
+        probabilities = self.forward_pass(inputs, incremental_state=incremental_state)
+        _, predicted_tokens = probabilities.max(-1)
+        return probabilities, predicted_tokens, incremental_state
 
-        loss, nll, ppl = self.nll_loss(pred, truth, msk)
-        _, pred_y = pred.max(-1)
-        tot_tokens = msk.float().sum().item()
-        acc = (torch.eq(pred_y, truth).float() * msk).sum().item()
-        return (pred_y, truth), loss, acc, nll, ppl, tot_tokens, bsz
+    def forward(self, targets, inputs, mask):
+        predictions = self.forward_pass(inputs, targets)
+        loss, nll, perplexity = self.nll_loss(predictions, targets, mask)
+        _, predicted_tokens = predictions.max(-1)
+        total_tokens = mask.float().sum().item()
+        accuracy = (torch.eq(predicted_tokens, targets).float() * mask).sum().item()
+        return (predicted_tokens, targets), loss, accuracy, nll, perplexity, total_tokens, inputs.size(1)

@@ -19,11 +19,12 @@ def ListsToTensor(xs, tknizer=None):
 
 
 def batchify(data, tknizer):
-    truth, inp, msk = [], [], []
-    for x in data:
-        inp.append(x[:-1])
-        truth.append(x[1:])
-        msk.append([1 for i in range(len(x) - 1)])
+    def prepare_batch(data, offset):
+        return [x[offset:] for x in data]
+
+    inp = prepare_batch(data, 0)
+    truth = prepare_batch(data, 1)
+    msk = [[1] * (len(x) - 1) for x in data]
 
     truth = torch.LongTensor(ListsToTensor(truth, tknizer)).t_().contiguous()
     inp = torch.LongTensor(ListsToTensor(inp, tknizer)).t().contiguous()
@@ -32,10 +33,8 @@ def batchify(data, tknizer):
 
 
 def s2t(strs, tknizer):
-    inp, msk = [], []
-    for x in strs:
-        inp.append([w for w in x])
-        msk.append([1 for i in range(len(x))])
+    inp = [[w for w in x] for x in strs]
+    msk = [[1] * len(x) for x in strs]
 
     inp = torch.LongTensor(ListsToTensor(inp, tknizer)).t_().contiguous()
     msk = torch.FloatTensor(ListsToTensor(msk)).t_().contiguous()
@@ -71,22 +70,18 @@ class DataLoader:
         self.max_len = max_len
         self.min_len = min_len
         self.filename = filename
-        self.stream = open(self.filename, encoding="utf8")
         self.epoch_id = 0
 
     def __iter__(self):
-        lines = self.stream.readlines(BUFSIZE)
+        while True:
+            with open(self.filename, encoding="utf8") as stream:
+                lines = stream.readlines(BUFSIZE)
+                if not lines:
+                    self.epoch_id += 1
+                    continue
 
-        if not lines:
-            self.epoch_id += 1
-            self.stream.close()
-            self.stream = open(self.filename, encoding="utf8")
-            lines = self.stream.readlines(BUFSIZE)
+                data = parse_lines(lines[:-1], self.max_len, self.min_len)
+                random.shuffle(data)
 
-        data = parse_lines(lines[:-1], self.max_len, self.min_len)
-        random.shuffle(data)
-
-        idx = 0
-        while idx < len(data):
-            yield batchify(data[idx : idx + self.batch_size], self.tknizer)
-            idx += self.batch_size
+                for idx in range(0, len(data), self.batch_size):
+                    yield batchify(data[idx : idx + self.batch_size], self.tknizer)

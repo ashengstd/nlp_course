@@ -77,9 +77,7 @@ elif ttype == "WordPiece":
         vocab_size=32000,
         special_tokens=["<pad>", "<bos>", "<eos>", "<mask>", "<INST>", "<\INST>", "<SYS>", "<\SYS>"],
     )
-    # tokenizer.train(["./data/train.txt"], trainer)
 
-    # 假设你有一个非常大的文本文件 "train.txt"
     input_file = "./data/train.txt"
 
     # 定义一个生成器函数来逐行读取数据

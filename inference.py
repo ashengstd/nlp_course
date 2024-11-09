@@ -25,58 +25,30 @@ def init_model(m_path, device, vocab):
 
 
 def beam_search(lm_model, lm_vocab, device, s, beam_width, max_len):
-    # Initial input transformation
     x, m = s2t(s, lm_vocab)
     x = x.to(device)
-
-    # Initialize the beam with the start token
-    beams = [([], 0.0)]  # (tokens, score), score is log-probability
-
+    beams = [([], 0.0)]
     for _l in range(max_len):
         all_candidates = []
-
-        # For each beam, expand it with all possible next tokens
         for tokens, score in beams:
-            # Get the logits for the next word
             probs, pred = lm_model.work(x)
-
-            # Only consider the last token's logits
             logits = probs[len(tokens) - 1] if len(tokens) > 0 else probs[0]
-
-            # Sort logits to get top-k predictions (beam_width)
             ps = torch.nn.functional.softmax(logits, dim=-1)
             topk_probs, topk_indices = torch.topk(ps, beam_width)
-
-            # Expand each beam with the possible next tokens
             for i in range(beam_width):
                 next_token = topk_indices[i].item()
                 new_score = score + torch.log(topk_probs[i]).item()
                 new_tokens = tokens + [next_token]
                 all_candidates.append((new_tokens, new_score))
-
-        # Select the top `beam_width` candidates based on their score
         beams = sorted(all_candidates, key=lambda x: x[1], reverse=True)[:beam_width]
-
-        # If all beams end with <eos>, stop early
         if all(tk[-1] == lm_vocab.token2idx("<eos>") for tk, _ in beams):
             break
-
-        # Prepare for the next time step
-        # Convert the selected beams back to input format for the next step
         s_ = [[lm_vocab.idx2token(tk) for tk in tokens] for tokens, _ in beams]
         x, m = s2t(s_, lm_vocab)
         x = x.to(device)
-
-    # Select the best beam (the one with the highest score)
     best_tokens = beams[0][0]
-
-    # Convert token indices back to text
     generated_text = "".join([lm_vocab.idx2token(idx) for idx in best_tokens])
-
-    if "<bos>" in generated_text:
-        return generated_text.split("<bos>")[1]
-    else:
-        return generated_text
+    return generated_text.split("<bos>")[1] if "<bos>" in generated_text else generated_text
 
 
 @torch.no_grad()
@@ -89,18 +61,12 @@ def top_k_inc(lm_model, lm_vocab, device, s, k, max_len):
         probs, pred, incremental_state = lm_model.work_incremental(x, incremental_state)
         next_tk = []
         for i in range(len(s)):
-            if l == 0:
-                logits = probs[len(s[i]) - 1, i]
-                ps, idx = torch.topk(logits, k=k)
-                ps = ps / torch.sum(ps)
-            else:
-                logits = probs[0, i]
-                ps, idx = torch.topk(logits, k=k)
-                ps = ps / torch.sum(ps)
+            logits = probs[len(s[i]) - 1, i] if l == 0 else probs[0, i]
+            ps, idx = torch.topk(logits, k=k)
+            ps = ps / torch.sum(ps)
             sampled = torch.multinomial(ps, num_samples=1)
             sampled_idx = idx[sampled]
             next_tk.append(lm_vocab.idx2token(sampled_idx.item()))
-
         s_ = []
         bidx = [1] * len(s)
         for idx, (sent, t) in enumerate(zip(s, next_tk, strict=False)):
@@ -117,12 +83,8 @@ def top_k_inc(lm_model, lm_vocab, device, s, k, max_len):
         bidx = torch.BoolTensor(bidx).to(device)
         incremental_state["bidx"] = bidx
     res += s_
-
     r = "".join(res[0])
-    if "<bos>" in r:
-        return r.split("<bos>")[1]
-    else:
-        return r
+    return r.split("<bos>")[1] if "<bos>" in r else r
 
 
 def greedy(lm_model, lm_vocab, device, s, max_len):
@@ -131,9 +93,7 @@ def greedy(lm_model, lm_vocab, device, s, max_len):
     res = []
     for _l in range(max_len):
         probs, pred = lm_model.work(x)
-        next_tk = []
-        for i in range(len(s)):
-            next_tk.append(lm_vocab.idx2token(pred[len(s[i]) - 1, i].item()))
+        next_tk = [lm_vocab.idx2token(pred[len(s[i]) - 1, i].item()) for i in range(len(s))]
         s_ = []
         for _idx, (sent, t) in enumerate(zip(s, next_tk, strict=False)):
             if t == "<eos>":
@@ -146,48 +106,30 @@ def greedy(lm_model, lm_vocab, device, s, max_len):
         x, m = s2t(s, lm_vocab)
         x = x.to(device)
     res += s_
-
     r = "".join(res[0])
-    if "<bos>" in r:
-        return r.split("<bos>")[1]
-    else:
-        return r
+    return r.split("<bos>")[1] if "<bos>" in r else r
 
 
 def top_p_inc(lm_model, lm_vocab, device, s, k, p, max_len):
-    time.time()
     incremental_state = None
     x, m = s2t(s, lm_vocab)
     x = x.to(device)
     res = []
-
     for l in range(max_len):
         probs, pred, incremental_state = lm_model.work_incremental(x, incremental_state)
-
         next_tk = []
         for i in range(len(s)):
             logits = probs[len(s[i]) - 1, i] if l == 0 else probs[0, i]
-
-            # 使用top-p采样
             sorted_logits, sorted_indices = torch.sort(logits, descending=True)
             cumulative_probs = torch.cumsum(torch.nn.functional.softmax(sorted_logits, dim=-1), dim=-1)
-
-            # 截断累积概率，保留符合top-p条件的词汇
             sorted_indices_to_keep = cumulative_probs <= p
-            sorted_indices_to_keep[-1] = True  # 保证至少选择一个词
-
-            # 根据保留的索引筛选
+            sorted_indices_to_keep[-1] = True
             sorted_logits = sorted_logits[sorted_indices_to_keep]
             sorted_indices = sorted_indices[sorted_indices_to_keep]
-
-            # 重新计算选择的概率分布
             ps = torch.nn.functional.softmax(sorted_logits, dim=-1)
             sampled = torch.multinomial(ps, num_samples=1)
             sampled_idx = sorted_indices[sampled]
-
-            # 将采样的索引转换为实际的token
             next_tk.append(lm_vocab.idx2token(sampled_idx.item()))
-
         s_ = []
         bidx = [1] * len(s)
         for idx, (sent, t) in enumerate(zip(s, next_tk, strict=False)):
@@ -196,63 +138,42 @@ def top_p_inc(lm_model, lm_vocab, device, s, k, p, max_len):
                 bidx[idx] = 0
             else:
                 s_.append(sent + [t])
-
         if not s_:
             break
-
         s = s_
         x, m = s2t(s, lm_vocab)
         x = x.to(device)
         bidx = torch.BoolTensor(bidx).to(device)
         incremental_state["bidx"] = bidx
-
     res += s_
-
     r = "".join(res[0])
-    if "<bos>" in r:
-        return r.split("<bos>")[1]
-    else:
-        return r
+    return r.split("<bos>")[1] if "<bos>" in r else r
 
 
 if __name__ == "__main__":
-    device = 0
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("loading...")
-    m_path = "./cpkt/"
+    m_path = "./cpkt/model.pt"
     v_path = "./model/vocab.txt"
     lm_model, lm_vocab, lm_args = init_model(m_path, device, v_path)
     print("done.")
-
     max_len = 200
-    # qs = ["介绍下南京航空航天大学", "Please introduce Nanjing University of Aeronautics and Astronautics"]
     qs = [
         "给你两个角色信息如下：\nA：王明，一个即将毕业的大学生，拥有广泛的兴趣爱好，包括电影、音乐和文学。\nB：张伟，一个广告公司的创意总监，擅长表达和沟通。\n生成他们之间的一段对话，要求对话内容详细丰富。"
     ]
     print(qs)
-
-    i = 0
-    for q in qs:
+    for i, q in enumerate(qs):
         start = mstime()
-        i += 1
         s = [[w for w in q]]
-
         r1 = greedy(lm_model, lm_vocab, device, s, max_len)
-
-        r2 = beam_search(lm_model, lm_vocab, device, s, max_len)
-
+        r2 = beam_search(lm_model, lm_vocab, device, s, 5, max_len)
         r3 = top_k_inc(lm_model, lm_vocab, device, s, 5, max_len)
-
         r4 = top_k_inc(lm_model, lm_vocab, device, s, 10, max_len)
-
         r5 = top_k_inc(lm_model, lm_vocab, device, s, 20, max_len)
-
         r6 = top_k_inc(lm_model, lm_vocab, device, s, 50, max_len)
-
         r7 = top_k_inc(lm_model, lm_vocab, device, s, 500, max_len)
-
         r8 = top_p_inc(lm_model, lm_vocab, device, s, 20, 0.95, max_len)
-
-        print(i)
+        print(i + 1)
         print("q: ", q)
         print("greedy: ", r1)
         print("bm5: ", q + r2)
