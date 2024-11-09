@@ -63,48 +63,25 @@ def parse_lines(lines, max_len, min_len):
 
 
 class DataLoader:
-    # def __init__(self, tknizer, batch_size, max_len, min_len, filename):
-    #     self.tknizer = tknizer
-    #     self.batch_size = batch_size
-    #     self.max_len = max_len
-    #     self.min_len = min_len
-    #     self.filename = filename
-    #     self.stream = open(self.filename, encoding="utf-8")
-    #     self.epoch_id = 0
-
-    # def __iter__(self):
-    #     lines = self.stream.readlines(BUFFER_SIZE)
-    #     if not lines:
-    #         self.stream.close()
-    #         self.epoch_id += 1
-    #         self.stream = open(self.filename, encoding="utf-8")
-    #         lines = self.stream.readlines(BUFFER_SIZE)
-    #     data = parse_lines(lines[:-1], self.max_len, self.min_len)
-    #     random.shuffle(data)
-    #     idx = 0
-    #     while idx < len(data):
-    #         print(1)
-    #         yield batchify(data[idx : idx + self.batch_size], self.tknizer)
-    #         idx += self.batch_size
     def __init__(self, tknizer, batch_size, max_len, min_len, filename):
         self.tknizer = tknizer
         self.batch_size = batch_size
         self.max_len = max_len
         self.min_len = min_len
         self.filename = filename
+        self.stream = open(self.filename, encoding="utf-8")
         self.epoch_id = 0
 
     def __iter__(self):
-        while True:  # 持续读取文件内容，形成循环
-            with open(self.filename, encoding="utf-8") as stream:
-                while True:
-                    lines = stream.readlines(BUFFER_SIZE)
-                    if not lines:  # 如果读取完毕，结束循环，进入新一轮 epoch
-                        self.epoch_id += 1
-                        break
-                    data = parse_lines(lines[:-1], self.max_len, self.min_len)
-                    random.shuffle(data)
-                    idx = 0
-                    while idx < len(data):
-                        yield batchify(data[idx : idx + self.batch_size], self.tknizer)
-                        idx += self.batch_size
+        lines = self.stream.readlines(BUFFER_SIZE)
+        if not lines:
+            self.stream.close()
+            self.epoch_id += 1
+            self.stream = open(self.filename, encoding="utf-8")
+            lines = self.stream.readlines(BUFFER_SIZE)
+        data = parse_lines(lines[:-1], self.max_len, self.min_len)
+        random.shuffle(data)
+        idx = 0
+        while idx < len(data):
+            yield batchify(data[idx : idx + self.batch_size], self.tknizer)
+            idx += self.batch_size

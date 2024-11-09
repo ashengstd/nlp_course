@@ -83,6 +83,7 @@ def eval_epoch(lm_args, model, tknizer, label, batch_acm):
 
 def run(args):
     torch.manual_seed(1234)
+    print(f"vocab:{args.vocab}")
     tknizer = Tokenizer(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[])
     print("vocab.size = %d" % tknizer.size, flush=True)
 
@@ -109,6 +110,7 @@ def run(args):
     while train_data.epoch_id <= args.epoch:
         model.train()
         for truth, inp, msk in train_data:
+            print(1)
             batch_acm += 1
             truth, inp, msk = truth.cuda(), inp.cuda(), msk.cuda()
 
