@@ -3,46 +3,48 @@ import random
 
 import torch
 
-BUFFER_SIZE = 409600
+BUFSIZE = 4096000
 
 
-def Lists2Tensor(x_s, tknizer=None):
-    max_len = max(len(x) for x in x_s)
-    y_s = []
-    for x in x_s:
+def ListsToTensor(xs, tknizer=None):
+    max_len = max(len(x) for x in xs)
+    ys = []
+    for x in xs:
         if tknizer is not None:
             y = tknizer.token2idx(x) + [tknizer.padding_idx] * (max_len - len(x))
         else:
             y = x + [0] * (max_len - len(x))
-        y_s.append(y)
-    return y_s
+        ys.append(y)
+    return ys
 
 
-def batchify(data, tknizer=None):
-    truth, inp, mask = [], [], []
+def batchify(data, tknizer):
+    truth, inp, msk = [], [], []
     for x in data:
         inp.append(x[:-1])
         truth.append(x[1:])
-        mask.append([1 for i in range(len(x) - 1)])
-    truth = torch.LongTensor(Lists2Tensor(x_s=truth, tknizer=tknizer)).t_().contiguous()
-    inp = torch.LongTensor(Lists2Tensor(x_s=inp, tknizer=tknizer)).t_().contiguous()
-    mask = torch.LongTensor(Lists2Tensor(x_s=mask)).t_().contiguous()
-    return truth, inp, mask
+        msk.append([1 for i in range(len(x) - 1)])
+
+    truth = torch.LongTensor(ListsToTensor(truth, tknizer)).t_().contiguous()
+    inp = torch.LongTensor(ListsToTensor(inp, tknizer)).t().contiguous()
+    msk = torch.FloatTensor(ListsToTensor(msk)).t_().contiguous()
+    return truth, inp, msk
 
 
-def s2t(strs, tknizer=None):
-    inp, mask = [], []
+def s2t(strs, tknizer):
+    inp, msk = [], []
     for x in strs:
-        inp.append([w for w in x])  # 使用列表推导式
-        mask.append([1 for _ in range(len(x))])  # 使用列表推导式
-    inp = torch.LongTensor(Lists2Tensor(x_s=inp, tknizer=tknizer)).t_().contiguous()
-    mask = torch.LongTensor(Lists2Tensor(x_s=mask)).t_().contiguous()
-    return inp, mask
+        inp.append([w for w in x])
+        msk.append([1 for i in range(len(x))])
+
+    inp = torch.LongTensor(ListsToTensor(inp, tknizer)).t_().contiguous()
+    msk = torch.FloatTensor(ListsToTensor(msk)).t_().contiguous()
+    return inp, msk
 
 
-def chunks(lst, n):
+def chunks(l, n):
     n = max(1, n)
-    return [lst[i : i + n] for i in range(0, len(lst), n)]
+    return [l[i : i + n] for i in range(0, len(l), n)]
 
 
 def parse_lines(lines, max_len, min_len):
@@ -55,32 +57,35 @@ def parse_lines(lines, max_len, min_len):
         if not line:
             continue
         line = [w for w in line]
-        sentences = chunks(line, max_len)
-        if len(sentences[-1]) < min_len:
-            sentences = sentences[:-1]
-        data.extend(sentences)
+        sents = chunks(line, max_len)
+        if len(sents[-1]) < min_len:
+            sents = sents[:-1]
+        data.extend(sents)
     return data
 
 
 class DataLoader:
-    def __init__(self, tknizer, batch_size, max_len, min_len, filename):
-        self.tknizer = tknizer
+    def __init__(self, tknizer, filename, batch_size, max_len, min_len):
         self.batch_size = batch_size
+        self.tknizer = tknizer
         self.max_len = max_len
         self.min_len = min_len
         self.filename = filename
-        self.stream = open(self.filename, encoding="utf-8")
+        self.stream = open(self.filename, encoding="utf8")
         self.epoch_id = 0
 
     def __iter__(self):
-        lines = self.stream.readlines(BUFFER_SIZE)
+        lines = self.stream.readlines(BUFSIZE)
+
         if not lines:
-            self.stream.close()
             self.epoch_id += 1
-            self.stream = open(self.filename, encoding="utf-8")
-            lines = self.stream.readlines(BUFFER_SIZE)
+            self.stream.close()
+            self.stream = open(self.filename, encoding="utf8")
+            lines = self.stream.readlines(BUFSIZE)
+
         data = parse_lines(lines[:-1], self.max_len, self.min_len)
         random.shuffle(data)
+
         idx = 0
         while idx < len(data):
             yield batchify(data[idx : idx + self.batch_size], self.tknizer)

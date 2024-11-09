@@ -143,13 +143,12 @@ def run(args, local_rank):
         model.train()
         for truth, inp, msk in train_data:
             batch_acm += 1
-            print(f"batch_acm {batch_acm}")
             truth = truth.cuda(local_rank)
             inp = inp.cuda(local_rank)
             msk = msk.cuda(local_rank)
             model.zero_grad()
             res, loss, acc, nll, ppl, ntokens, npairs = model(truth, inp, msk)
-            loss_acm += 1
+            loss_acm += loss
             acc_acm += acc
             nll_acm += nll
             ppl_acm += ppl
