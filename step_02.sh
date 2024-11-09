@@ -21,10 +21,10 @@ python -u pretrain.py --embed_dim 768 \
                       --gpus 1 \
                       --start_rank 0 \
                       --MASTER_ADDR localhost \
-                      --MASTER_PORT 28512 \
+                      --MASTER_PORT 28888 \
                       --print_every 10 \
                       --save_every 10000 \
                       --epoch 100 \
                       --save_dir ckpt \
                       --backend nccl \
-                      --tokenizer_type char
+                      # --tokenizer_type char

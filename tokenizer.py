@@ -15,7 +15,7 @@ class Tokenizer:
         for line in open(filename, encoding="utf-8").readlines():
             try:
                 token, cnt = line.strip().split()
-            except:
+            except Exception:
                 continue
             if int(cnt) >= min_occur_cnt:
                 idx2token.append(token)
@@ -114,7 +114,7 @@ class BpeTokenizer:
 
 
 if __name__ == "__main__":
-    text = "南京航空航天大学是一所坐落在南京的双一流大学，Nanjing University of Aeronautics and Astronautics is a double first-class university located in Nanjing."
+    text = "南京航空航天大学是一所坐落在南京的双一流大学, Nanjing University of Aeronautics and Astronautics is a double first-class university located in Nanjing."
     # tokenizer = Tokenizer("./model/vocab.txt", min_occur_cnt=50)
     tokenizer = BpeTokenizer("./model/m.model")
 

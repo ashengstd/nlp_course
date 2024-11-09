@@ -1,10 +1,7 @@
 import argparse
 import os
-import random
 
 import torch
-import torch.distributed as dist
-import torch.multiprocessing as mp
 
 from data import DataLoader, batchify, parse_lines
 from mygpt import myGPT
@@ -39,12 +36,6 @@ def parse_config():
 
     parser.add_argument("--approx", type=str, default="none")
     parser.add_argument("--fp16", action="store_true")
-    parser.add_argument("--world_size", type=int, default=1)
-    parser.add_argument("--gpus", type=int, default=1)
-    parser.add_argument("--MASTER_ADDR", type=str, default="localhost")
-    parser.add_argument("--MASTER_PORT", type=str, default="25555")
-    parser.add_argument("--start_rank", type=int, default=0)
-    parser.add_argument("--backend", type=str, default="nccl")
 
     return parser.parse_args()
 
@@ -54,20 +45,7 @@ def update_lr(optimizer, lr):
         param_group["lr"] = lr
 
 
-def average_gradients(model):
-    normal = True
-    size = float(dist.get_world_size())
-    for param in model.parameters():
-        if param.grad is not None:
-            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
-            param.grad.data /= size
-        else:
-            normal = False
-            break
-    return normal
-
-
-def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
+def eval_epoch(lm_args, model, tknizer, label, batch_acm):
     ds = []
     with open(lm_args.dev_data) as f:
         for line in f:
@@ -76,30 +54,24 @@ def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
                 ds.append(line)
 
     ds = parse_lines(ds, lm_args.max_len, lm_args.min_len)
-
     batch_size = 10
-    batches = round(len(ds) / batch_size)
     idx = 0
     avg_nll = 0.0
     avg_ppl = 0.0
     avg_acc = 0.0
     count_bsz = 0.0
     count_tok = 0.0
+
     while idx < len(ds):
         ys_truth, ys_inp, msk = batchify(ds[idx : idx + batch_size], tknizer)
-
-        ys_truth = ys_truth.cuda(local_rank)
-        ys_inp = ys_inp.cuda(local_rank)
-        msk = msk.cuda(local_rank)
+        ys_truth, ys_inp, msk = ys_truth.cuda(), ys_inp.cuda(), msk.cuda()
 
         acc, nll, ppl, toks, bsz = model.ppl(ys_truth, ys_inp, msk)
-
         avg_acc += acc
         avg_nll += nll
         avg_ppl += ppl
         count_bsz += bsz
         count_tok += toks
-
         idx += batch_size
 
     print(
@@ -109,20 +81,16 @@ def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
     )
 
 
-def run(args, local_rank):
+def run(args):
     torch.manual_seed(1234)
     tknizer = Tokenizer(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[])
-    if args.world_size == 1 or dist.get_rank() == 0:
-        print("vocab.size = %d" % tknizer.size, flush=True)
-    model = myGPT(local_rank, tknizer, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
+    print("vocab.size = %d" % tknizer.size, flush=True)
+
+    model = myGPT(0, tknizer, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
     if args.start_from is not None:
         ckpt = torch.load(args.start_from, map_location="cpu")
         model.load_state_dict(ckpt["model"])
-    model = model.cuda(local_rank)
-
-    if args.world_size > 1:
-        torch.manual_seed(1234 + dist.get_rank())
-        random.seed(5678 + dist.get_rank())
+    model = model.cuda()
 
     optimizer = Optim(
         model.embed_dim,
@@ -137,19 +105,15 @@ def run(args, local_rank):
     train_data = DataLoader(tknizer, args.train_data, args.batch_size, args.max_len, args.min_len)
     batch_acm = 0
     acc_acm, nll_acm, ppl_acm, ntokens_acm, nxs, npairs_acm, loss_acm = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    while True:
-        if train_data.epoch_id > args.epoch:
-            break
+
+    while train_data.epoch_id <= args.epoch:
         model.train()
         for truth, inp, msk in train_data:
             batch_acm += 1
-            print(f"batch_acm {batch_acm}")
-            truth = truth.cuda(local_rank)
-            inp = inp.cuda(local_rank)
-            msk = msk.cuda(local_rank)
+            truth, inp, msk = truth.cuda(), inp.cuda(), msk.cuda()
+
             model.zero_grad()
             res, loss, acc, nll, ppl, ntokens, npairs = model(truth, inp, msk)
-            loss_acm += 1
             acc_acm += acc
             nll_acm += nll
             ppl_acm += ppl
@@ -158,12 +122,10 @@ def run(args, local_rank):
             nxs += npairs
 
             loss.backward()
-            if args.world_size > 1:
-                average_gradients(model)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
-            if (args.world_size == 1 or dist.get_rank() == 0) and batch_acm % args.print_every == -1 % args.print_every:
+            if batch_acm % args.print_every == 0:
                 print(
                     "batch_acm %d, loss %.3f, acc %.3f, nll%.3f, ppl %.3f, x_acm %d, lr %.6f"
                     % (
@@ -179,7 +141,7 @@ def run(args, local_rank):
                 )
                 acc_acm, nll_acm, ppl_acm, ntokens_acm, loss_acm, nxs = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
-            if (args.world_size == 1 or dist.get_rank() == 0) and batch_acm % args.save_every == -1 % args.save_every:
+            if batch_acm % args.save_every == 0:
                 if not os.path.exists(args.save_dir):
                     os.mkdir(args.save_dir)
                 torch.save(
@@ -189,33 +151,11 @@ def run(args, local_rank):
 
                 model.eval()
                 eval_epoch(
-                    args,
-                    model,
-                    tknizer,
-                    local_rank,
-                    "epoch-" + str(train_data.epoch_id) + "-acm-" + str(batch_acm),
-                    batch_acm,
+                    args, model, tknizer, "epoch-" + str(train_data.epoch_id) + "-acm-" + str(batch_acm), batch_acm
                 )
                 model.train()
 
 
-def init_processes(args, local_rank, fn, backend="nccl"):
-    os.environ["MASTER_ADDR"] = args.MASTER_ADDR
-    os.environ["MASTER_PORT"] = args.MASTER_PORT
-    dist.init_process_group(backend, rank=args.start_rank + local_rank, world_size=args.world_size)
-    fn(args, local_rank)
-
-
 if __name__ == "__main__":
-    mp.set_start_method("spawn")
     args = parse_config()
-    if args.world_size == 1:
-        run(args, 0)
-        exit(0)
-    processes = []
-    for rank in range(args.gpus):
-        p = mp.Process(target=init_processes, args=(args, rank, run, args.backend))
-        p.start()
-        processes.append(p)
-    for p in processes:
-        p.join()
+    run(args)
