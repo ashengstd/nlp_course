@@ -7,13 +7,14 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from data import DataLoader, batchify, parse_lines
-from mygpt import myGPT
+from mygpt import MyGPT
 from optim import Optim
-from tokenizer import Tokenizer
+from tokenizer import BpeTokenizer, Tokenizer
 
 
 def parse_config():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--tokenizer_type", type=str, default="char", choices=["char", "bpe"])
     parser.add_argument("--embed_dim", type=int, default=768)
     parser.add_argument("--ff_embed_dim", type=int, default=3072)
     parser.add_argument("--num_heads", type=int, default=12)
@@ -109,11 +110,15 @@ def save_model(args, model, optimizer, train_data, batch_acm):
 
 def run(args, local_rank):
     torch.manual_seed(1234)
-    tknizer = Tokenizer(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[])
+    tknizer = (
+        Tokenizer(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[])
+        if args.tokenizer_type == "char"
+        else BpeTokenizer(args.vocab, specials=[])
+    )
     if args.world_size == 1 or dist.get_rank() == 0:
         print(f"vocab.size = {tknizer.size}", flush=True)
 
-    model = myGPT(local_rank, tknizer, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
+    model = MyGPT(local_rank, tknizer, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
     if args.start_from is not None:
         ckpt = torch.load(args.start_from, map_location="cpu")
         model.load_state_dict(ckpt["model"])
@@ -145,7 +150,7 @@ def run(args, local_rank):
 
             model.zero_grad()
             res, loss, acc, nll, ppl, ntokens, npairs = model(truth, inp, msk)
-            loss_acm += loss
+            loss_acm += loss.item()
             acc_acm += acc
             nll_acm += nll
             ppl_acm += ppl
