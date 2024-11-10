@@ -21,7 +21,7 @@ python -u pretrain.py --embed_dim 768 \
                       --min_occur_cnt 1 \
                       --batch_size 20 \
                       --warmup_steps 10000 \
-                      --lr 4 \
+                      --lr 1 \
                       --weight_decay 0 \
                       --smoothing 0.1 \
                       --max_len 256 \
@@ -31,8 +31,8 @@ python -u pretrain.py --embed_dim 768 \
                       --start_rank 0 \
                       --MASTER_ADDR localhost \
                       --MASTER_PORT 28888 \
-                      --print_every 10 \
-                      --save_every 1000 \
+                      --print_every 100 \
+                      --save_every 5000 \
                       --epoch 100 \
                       --save_dir ckpt \
                       --backend nccl \
