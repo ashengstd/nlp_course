@@ -3,7 +3,7 @@ import time
 import torch
 
 from data import s2t
-from mygpt import myGPT
+from mygpt import MyGPT
 from tokenizer import Tokenizer
 
 
@@ -15,40 +15,13 @@ def init_model(m_path, device, vocab):
     ckpt = torch.load(m_path, map_location="cpu")
     lm_args = ckpt["args"]
     lm_vocab = Tokenizer(vocab, min_occur_cnt=lm_args.min_occur_cnt, specials=[])
-    lm_model = myGPT(
+    lm_model = MyGPT(
         device, lm_vocab, lm_args.embed_dim, lm_args.ff_embed_dim, lm_args.num_heads, lm_args.dropout, lm_args.layers
     )
     lm_model.load_state_dict(ckpt["model"])
     lm_model = lm_model.to(device)
     lm_model.eval()
     return lm_model, lm_vocab, lm_args
-
-
-def beam_search(lm_model, lm_vocab, device, s, beam_width, max_len):
-    x, m = s2t(s, lm_vocab)
-    x = x.to(device)
-    beams = [([], 0.0)]
-    for _l in range(max_len):
-        all_candidates = []
-        for tokens, score in beams:
-            probs, pred = lm_model.work(x)
-            logits = probs[len(tokens) - 1] if len(tokens) > 0 else probs[0]
-            ps = torch.nn.functional.softmax(logits, dim=-1)
-            topk_probs, topk_indices = torch.topk(ps, beam_width)
-            for i in range(beam_width):
-                next_token = topk_indices[i].item()
-                new_score = score + torch.log(topk_probs[i]).item()
-                new_tokens = tokens + [next_token]
-                all_candidates.append((new_tokens, new_score))
-        beams = sorted(all_candidates, key=lambda x: x[1], reverse=True)[:beam_width]
-        if all(tk[-1] == lm_vocab.token2idx("<eos>") for tk, _ in beams):
-            break
-        s_ = [[lm_vocab.idx2token(tk) for tk in tokens] for tokens, _ in beams]
-        x, m = s2t(s_, lm_vocab)
-        x = x.to(device)
-    best_tokens = beams[0][0]
-    generated_text = "".join([lm_vocab.idx2token(idx) for idx in best_tokens])
-    return generated_text.split("<bos>")[1] if "<bos>" in generated_text else generated_text
 
 
 @torch.no_grad()
@@ -110,50 +83,10 @@ def greedy(lm_model, lm_vocab, device, s, max_len):
     return r.split("<bos>")[1] if "<bos>" in r else r
 
 
-def top_p_inc(lm_model, lm_vocab, device, s, k, p, max_len):
-    incremental_state = None
-    x, m = s2t(s, lm_vocab)
-    x = x.to(device)
-    res = []
-    for l in range(max_len):
-        probs, pred, incremental_state = lm_model.work_incremental(x, incremental_state)
-        next_tk = []
-        for i in range(len(s)):
-            logits = probs[len(s[i]) - 1, i] if l == 0 else probs[0, i]
-            sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-            cumulative_probs = torch.cumsum(torch.nn.functional.softmax(sorted_logits, dim=-1), dim=-1)
-            sorted_indices_to_keep = cumulative_probs <= p
-            sorted_indices_to_keep[-1] = True
-            sorted_logits = sorted_logits[sorted_indices_to_keep]
-            sorted_indices = sorted_indices[sorted_indices_to_keep]
-            ps = torch.nn.functional.softmax(sorted_logits, dim=-1)
-            sampled = torch.multinomial(ps, num_samples=1)
-            sampled_idx = sorted_indices[sampled]
-            next_tk.append(lm_vocab.idx2token(sampled_idx.item()))
-        s_ = []
-        bidx = [1] * len(s)
-        for idx, (sent, t) in enumerate(zip(s, next_tk, strict=False)):
-            if t == "<eos>":
-                res.append(sent)
-                bidx[idx] = 0
-            else:
-                s_.append(sent + [t])
-        if not s_:
-            break
-        s = s_
-        x, m = s2t(s, lm_vocab)
-        x = x.to(device)
-        bidx = torch.BoolTensor(bidx).to(device)
-        incremental_state["bidx"] = bidx
-    res += s_
-    r = "".join(res[0])
-    return r.split("<bos>")[1] if "<bos>" in r else r
-
-
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("loading...")
-    m_path = "./cpkt/model.pt"
+    m_path = "./ckpt/epoch0_batch_100"
     v_path = "./model/vocab.txt"
     lm_model, lm_vocab, lm_args = init_model(m_path, device, v_path)
     print("done.")
@@ -166,21 +99,21 @@ if __name__ == "__main__":
         start = mstime()
         s = [[w for w in q]]
         r1 = greedy(lm_model, lm_vocab, device, s, max_len)
-        r2 = beam_search(lm_model, lm_vocab, device, s, 5, max_len)
+        # r2 = beam_search(lm_model, lm_vocab, device, s, 5, max_len)
         r3 = top_k_inc(lm_model, lm_vocab, device, s, 5, max_len)
         r4 = top_k_inc(lm_model, lm_vocab, device, s, 10, max_len)
         r5 = top_k_inc(lm_model, lm_vocab, device, s, 20, max_len)
         r6 = top_k_inc(lm_model, lm_vocab, device, s, 50, max_len)
         r7 = top_k_inc(lm_model, lm_vocab, device, s, 500, max_len)
-        r8 = top_p_inc(lm_model, lm_vocab, device, s, 20, 0.95, max_len)
+        # r8 = top_p_inc(lm_model, lm_vocab, device, s, 20, 0.95, max_len)
         print(i + 1)
         print("q: ", q)
         print("greedy: ", r1)
-        print("bm5: ", q + r2)
+        # print("bm5: ", q + r2)
         print("tk5: ", r3)
         print("tk10: ", r4)
         print("tk20: ", r5)
         print("tk50: ", r6)
         print("tk500: ", r7)
-        print("tp0.95: ", r8)
+        # print("tp0.95: ", r8)
         print(mstime() - start)

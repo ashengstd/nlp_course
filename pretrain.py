@@ -102,6 +102,12 @@ def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
 def save_model(args, model, optimizer, train_data, batch_acm):
     if not os.path.exists(args.save_dir):
         os.mkdir(args.save_dir)
+
+    for filename in os.listdir(args.save_dir):
+        file_path = os.path.join(args.save_dir, filename)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
     torch.save(
         {"args": args, "model": model.state_dict(), "optimizer": optimizer.state_dict()},
         f"{args.save_dir}/epoch{train_data.epoch_id}_batch_{batch_acm}",
