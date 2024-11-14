@@ -4,8 +4,8 @@ import time
 
 import torch
 
-from mygpt import MyGPT
-from tokenizer import Tokenizer
+from base_model.mygpt import MyGPT
+from base_model.tokenizer import Tokenizer
 from utils.data import s2t
 
 

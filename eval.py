@@ -5,7 +5,7 @@ import time
 
 import pandas as pd
 
-from eval.myEvaluator import MyEvaluator
+from ceval.myEvaluator import MyEvaluator
 
 choices = ["A", "B", "C", "D"]
 
