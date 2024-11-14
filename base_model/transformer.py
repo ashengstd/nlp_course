@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn import Parameter
 
-from utils import LayerNorm, gelu, get_incremental_state, set_incremental_state
+from base_model.utils import LayerNorm, gelu, get_incremental_state, set_incremental_state
 
 
 class TransformerLayer(nn.Module):

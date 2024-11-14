@@ -1,11 +1,18 @@
 # config dir
 .vscode
 
+# model dir
+ckpt/
+model/
+
 # cache dir
 *.pyc
 *__pycache__/
 *.mypy_cache/
 *.ruff_cache/
+
+# log dir
+logs/
 
 # data dir
 data/

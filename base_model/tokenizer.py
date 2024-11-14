@@ -50,7 +50,13 @@ class Tokenizer:
         return self._token2idx.get(x, self.unk_idx)
 
     def encode(self, x):
-        return self.token2idx(x)
+        if isinstance(x, list):
+            # 如果是列表，逐个将字符串转换为 token ID
+            return [self.token2idx(i) for i in x]
+        elif isinstance(x, str):
+            # 如果是单个字符串，首先分词（如果使用简单的空格分词方式）
+            tokens = x.split()  # 这里可以根据需求调整为更复杂的分词方式
+            return [self.token2idx(token) for token in tokens]
 
     def decode(self, x):
         return "".join(self.idx2token(x))

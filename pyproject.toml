@@ -11,10 +11,9 @@ dependencies = [
     "sentencepiece",
     "tokenizers",
     "ruff",
-    "matplotlib",
-    "pathlib",
     "rich",
     "mypy",
+    "tqdm",
 ]
 
 [tool.uv.sources]

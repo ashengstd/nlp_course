@@ -6,10 +6,10 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from data import DataLoader, batchify, parse_lines
-from mygpt import MyGPT
-from optim import Optim
-from tokenizer import BpeTokenizer, Tokenizer
+from base_model.mygpt import MyGPT
+from base_model.optim import Optim
+from base_model.tokenizer import BpeTokenizer, Tokenizer
+from utils.data import DataLoader, batchify, parse_lines
 
 
 def parse_config():

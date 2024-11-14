@@ -2,8 +2,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from transformer import Embedding, LearnedPositionalEmbedding, SelfAttentionMask, TransformerLayer
-from utils import LayerNorm, gelu
+from base_model.transformer import Embedding, LearnedPositionalEmbedding, SelfAttentionMask, TransformerLayer
+from base_model.utils import LayerNorm, gelu
 
 
 class MyGPT(nn.Module):

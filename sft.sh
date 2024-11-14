@@ -15,8 +15,8 @@ python -u pretrain.py --embed_dim 768 \
                       --num_heads 12 \
                       --layers 12 \
                       --dropout 0.2 \
-                      --train_data ./data/pretrain/train.txt \
-                      --dev_data ./data/pretrain/val_tiny.txt \
+                      --train_data ./data/sft/train_converted.txt \
+                      --dev_data ./data/sft/val_converted.txt \
                       --vocab "$vocab_path" \
                       --min_occur_cnt 1 \
                       --batch_size 20 \
@@ -36,4 +36,5 @@ python -u pretrain.py --embed_dim 768 \
                       --epoch 100 \
                       --save_dir ckpt \
                       --backend nccl \
-                      --tokenizer_type "$tokenizer_type"
+                      --tokenizer_type "$tokenizer_type" \
+                      --start_from "./epoch0_batch_10000"
