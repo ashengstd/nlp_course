@@ -23,6 +23,7 @@ class Tokenizer:
         self._idx2token = idx2token
         self._padding_idx = self._token2idx[PAD]
         self._unk_idx = self._token2idx[UNK]
+        self._eos_idx = self._token2idx[EOS]
 
     @property
     def size(self):

@@ -14,7 +14,7 @@ def convert_data(input_file, output_file):
             out_f.write(json.dumps(converted_entry, ensure_ascii=False) + "\n")
 
 
-path = pathlib.Path("./sft")
+path = pathlib.Path("./data/sft")
 for file in path.iterdir():
     if file.suffix == ".txt":
         output_file = file.with_name(file.stem + "_converted.txt")

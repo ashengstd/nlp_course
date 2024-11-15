@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 
@@ -7,11 +8,11 @@ from tqdm import tqdm
 
 from base_model.mygpt import MyGPT
 from base_model.tokenizer import BOS, Tokenizer
-from eval.evaluator import Evaluator
+from ceval.evaluator import Evaluator
 
 
 def sample_top_p(probs, p):
-    probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
+    probs_sort, probs_idx = torch.sort(probs[-1, 0, :], dim=-1, descending=True)
     probs_sum = torch.cumsum(probs_sort, dim=-1)
     mask = probs_sum - probs_sort > p
     probs_sort[mask] = 0.0
@@ -106,11 +107,10 @@ class MyEvaluator(Evaluator):
         tokens = torch.full((1, total_len), self.tokenizer._padding_idx).cuda().long()
         tokens[0, :prompt_size] = torch.tensor(prompt_tokens).long()
         input_text_mask = tokens != self.tokenizer._padding_idx
-        prev_pos = 0
         if return_logits:
             return self.model.work(tokens[:, :prompt_size])[0]
         for cur_pos in range(prompt_size, total_len):
-            logits = self.model.work(tokens[:, prev_pos:cur_pos])[0]
+            logits = self.model.work(tokens[:, :cur_pos])[0]
             if temperature > 0:
                 probs = torch.softmax(logits / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
@@ -119,15 +119,12 @@ class MyEvaluator(Evaluator):
             next_token = next_token.reshape(-1)
             next_token = torch.where(input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token)
             tokens[:, cur_pos] = next_token
-            prev_pos = cur_pos
 
         decoded = []
         for _, t in enumerate(tokens.tolist()):
             t = t[: prompt_size + max_gen_len]
-            try:
-                t = t[: t.index(self.tokenizer.eos_id)]
-            except ValueError:
-                pass
+            with contextlib.suppress(ValueError):
+                t = t[: t.index(self.tokenizer._eos_idx)]
             decoded.append(self.tokenizer.decode(t))
         return decoded
 
@@ -150,31 +147,27 @@ class MyEvaluator(Evaluator):
         return None
 
     def answer_str(self, answer, a, b, c, d):
-        if answer == "D":
-            return d
-        elif answer == "C":
-            return c
-        elif answer == "B":
-            return b
-        else:
-            return a
+        ans_dict = {"A": a, "B": b, "C": c, "D": d}
+        return ans_dict[answer]
 
     def extract_answer(self, row, output):
         pred = {"A": 0, "B": 1, "C": 2, "D": 3}
         correct_answer_str = self.answer_str(row["answer"], row["A"], row["B"], row["C"], row["D"])
         generate_answer = self.extract_model_answer(str(output), row["A"], row["B"], row["C"], row["D"])
+        if not generate_answer:
+            return None, 0
         model_answer = self.extract_answer_option(generate_answer)
         if row["answer"] == model_answer or correct_answer_str == model_answer:
-            return pred[model_answer] if model_answer in pred else model_answer, 1
+            return pred.get(model_answer, model_answer), 1
         else:
-            return pred[model_answer] if model_answer in pred else model_answer, 0
+            return pred.get(model_answer, model_answer), 0
 
     def eval_subject(
         self, subject_name, test_df, dev_df=None, few_shot=False, save_result_dir=None, cot=False, **kwargs
     ):
         result = []
         score = []
-        few_shot_prompt = self.generate_few_shot_prompt(subject_name, dev_df, cot=cot) if few_shot else []
+        few_shot_prompt = self.generate_few_shot_prompt(subject_name, dev_df, cot=cot) if few_shot else ""
         for _, row in tqdm(test_df.iterrows(), total=len(test_df)):
             question = self.format_example(row, include_answer=False, cot=cot)
             full_prompt = few_shot_prompt + question
