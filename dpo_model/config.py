@@ -2,12 +2,13 @@ from dataclasses import dataclass, field
 
 import torch
 
+from base_model.tokenizer import Tokenizer
+
 
 class Config:
     # model 参数 ###########################
     # 文本生成模型,下载地址 https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat
     gpt_model = ""
-    tokenizer_path = "../model/vocab.txt"
     data_path = "../data/dpo/train_data.json"
     save_lora_path = "../ckpt/dpo/lora.pth"
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -17,6 +18,17 @@ class Config:
     # DPO 参数 ############################
     dpo_epochs = 3
     beta = 0.1
+
+
+gpt_config = {
+    "local_rank": 0,
+    "vocab": Tokenizer(filename="../model/vocab.txt", min_occur_cnt=10),
+    "embed_dim": 768,
+    "ff_embed_dim": 3072,
+    "num_heads": 12,
+    "dropout": 0.2,
+    "layers": 12,
+}
 
 
 @dataclass
