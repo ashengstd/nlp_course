@@ -28,9 +28,9 @@ class CustomDataset(Dataset):
             {"role": "user", "content": query},
         ]
         text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        prompt_inputs = self.tokenizer.encode(text=text)
-        rejected_inputs = self.tokenizer.encode(text=rejected)
-        chosen_inputs = self.tokenizer.encode(text=chosen)
+        prompt_inputs = self.tokenizer.encode(text)
+        rejected_inputs = self.tokenizer.encode(rejected)
+        chosen_inputs = self.tokenizer.encode(chosen)
         return [prompt_inputs, rejected_inputs, chosen_inputs]
 
     def collate_fn(self, batch):
@@ -41,7 +41,7 @@ class CustomDataset(Dataset):
             labels_masks = []
             for one, mask in zip(data, labels_mask, strict=False):
                 padding_num = max_length - len(one)
-                return_ids.append(one + [self.tokenizer.pad_token_id] * padding_num)
+                return_ids.append(one + [self.tokenizer._padding_idx] * padding_num)
                 labels_masks.append(mask + [0] * padding_num)
                 attention_masks.append([1] * len(one) + [0] * padding_num)
             return return_ids, attention_masks, labels_masks

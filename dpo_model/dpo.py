@@ -11,7 +11,7 @@ class DPO:
 
     def train(self, inputs_ids, attention_mask, ref_logits, labels_mask):
         # 计算参考模型的logps
-        ref_token_logps = self.probs_from_logits(torch.tensor(ref_logits)[:, :-1, :], inputs_ids[:, 1:])
+        ref_token_logps = self.probs_from_logits(ref_logits.clone().detach()[:, :-1, :], inputs_ids[:, 1:])
         ref_logps = self.filter_mask(ref_token_logps, labels_mask)
         # 一次数据多训练几次，这样reference只用计算一次
         for _dpo_epoch in range(self.dpo_epochs):

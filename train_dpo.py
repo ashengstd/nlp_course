@@ -3,7 +3,6 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from base_model.mygpt import MyGPT
-from base_model.tokenizer import Tokenizer
 from dpo_model.config import Config, gpt_config
 from dpo_model.dpo import DPO
 from utils.dpo_data_load import CustomDataset
@@ -13,13 +12,13 @@ class TrainDpo:
     def __init__(self):
         self.config = Config()
         # 演员和评论家模型
-        self.model = MyGPT(gpt_config)
+        self.model = MyGPT(local_rank=gpt_config["local_rank"], vocab=gpt_config["vocab"], embed_dim=gpt_config["embed_dim"], ff_embed_dim=gpt_config["ff_embed_dim"], num_heads=gpt_config["num_heads"], dropout=gpt_config["dropout"], layers=gpt_config["layers"]).to(self.config.device)
         # 获得策略模型优化器, 这里使用的是lora, 不优化全量数据
         self.model_opt = Adam(self.model.parameters(), lr=self.config.lr)
         # 参考模型
-        self.reference_model = MyGPT(gpt_config)
+        self.reference_model = MyGPT(local_rank=gpt_config["local_rank"], vocab=gpt_config["vocab"], embed_dim=gpt_config["embed_dim"], ff_embed_dim=gpt_config["ff_embed_dim"], num_heads=gpt_config["num_heads"], dropout=gpt_config["dropout"], layers=gpt_config["layers"]).to(self.config.device)
 
-        self.tokenizer = Tokenizer(filename=self.config.gpt_config["vocab"].filename, min_occur_cnt=10)
+        self.tokenizer = gpt_config["vocab"]
 
         # 训练数据
         dataset = CustomDataset(self.config.data_path, self.tokenizer)
@@ -32,18 +31,18 @@ class TrainDpo:
     def train_dpo(self):
         for _epoch in range(self.config.epochs):
             for batch_data in self.data_loader:
-                ref_logits = self.reference_model(
-                    batch_data["inputs_ids"], batch_data["inputs_masks"]
+                ref_logits = self.reference_model.generate_logits(
+                    batch_data["inputs_ids"].to(self.config.device), batch_data["inputs_masks"].to(self.config.device)
                 )  # 获得参考模型的logit
                 self.dpo.train(
-                    batch_data["inputs_ids"], batch_data["inputs_masks"], ref_logits, batch_data["labels_mask"]
+                    batch_data["inputs_ids"].to(self.config.device), batch_data["inputs_masks"].to(self.config.device), ref_logits, batch_data["labels_mask"].to(self.config.device)
                 )
 
         self.save_model()
 
     def save_model(self):
         # 保存lora参数
-        torch.save(self.model, self.config.save_lora_path)
+        torch.save(self.model.state_dict(), self.config.save_lora_path)
 
 
 if __name__ == "__main__":
