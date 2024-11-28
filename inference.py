@@ -57,7 +57,7 @@ def greedy(lm_model, lm_vocab, device, s, max_len):
     # 拼接生成的 token 为文本
     generated_text = "".join(prompt[0])
 
-    return generated_text.split("<bos>")[1]
+    return generated_text.split("<bos>")[1] if "<bos>" in generated_text else generated_text
 
 
 @torch.no_grad()
@@ -102,7 +102,7 @@ def top_k_inc(lm_model, lm_vocab, device, s, max_len, k=10):
     # 拼接生成的 token 为文本
     generated_text = "".join(prompt[0])
 
-    return generated_text.split("<bos>")[1]
+    return generated_text.split("<bos>")[1] if "<bos>" in generated_text else generated_text
 
 
 @torch.no_grad()
