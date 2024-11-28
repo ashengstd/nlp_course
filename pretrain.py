@@ -20,8 +20,8 @@ def parse_config():
     parser.add_argument("--num_heads", type=int, default=12)
     parser.add_argument("--layers", type=int, default=12)
     parser.add_argument("--dropout", type=float, default=0.2)
-    parser.add_argument("--train_data", type=str, default="./data/train.txt")
-    parser.add_argument("--dev_data", type=str, default="./data/val_tiny.txt")
+    parser.add_argument("--train_data", type=str, default="./data/pretrain/train.txt")
+    parser.add_argument("--dev_data", type=str, default="./data/pretrain/val_tiny.txt")
     parser.add_argument("--vocab", type=str, default="./model/vocab.txt")
     parser.add_argument("--min_occur_cnt", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=20)
@@ -152,6 +152,7 @@ def run(args, local_rank):
         model.train()
         for truth, inp, msk in train_data:
             batch_acm += 1
+            print(inp.shape,msk.shape)
             truth, inp, msk = truth.cuda(local_rank), inp.cuda(local_rank), msk.cuda(local_rank)
 
             model.zero_grad()

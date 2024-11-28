@@ -143,7 +143,7 @@ def top_k_inc1(lm_model, lm_vocab, device, s, k, max_len):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate dialogue using GPT model")
-    parser.add_argument("--model_path", type=str, default="./ckpt/dpo/lora.pth", help="Path to the model checkpoint")
+    parser.add_argument("--model_path", type=str, default="./epoch1_batch_15000", help="Path to the model checkpoint")
     parser.add_argument("--vocab_path", type=str, default="./model/vocab.txt", help="Path to the vocab file")
     parser.add_argument("--max_len", type=int, default=80, help="Maximum length of generated text")
     return parser.parse_args()

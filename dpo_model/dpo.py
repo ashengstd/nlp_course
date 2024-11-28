@@ -16,7 +16,8 @@ class DPO:
         # 一次数据多训练几次，这样reference只用计算一次
         for _dpo_epoch in range(self.dpo_epochs):
             # 计算策略模型的logps
-            logits = self.model.generate_logits(inputs_ids, attention_mask)
+            logits = self.model.generate_logits(inputs_ids.T)
+            logits = logits.permute(1, 0, 2)
             policy_token_logps = self.probs_from_logits(logits[:, :-1, :], inputs_ids[:, 1:])
             policy_logps = self.filter_mask(policy_token_logps, labels_mask)
             loss = self.dpo_loss(policy_logps, ref_logps)
@@ -64,6 +65,7 @@ class DPO:
 
     @staticmethod
     def filter_mask(values, labels_masks):
+        
         """
         :param values: 一般是prob_old、prob_ref、value(价值)的值
         :param labels_masks:label 对应的mask

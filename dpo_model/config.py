@@ -13,14 +13,14 @@ class Config:
     save_lora_path = "./ckpt/dpo/lora.pth"
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     batch_size = 1
-    epochs = 3
+    epochs = 1
     lr = 0.001
     # DPO 参数 ############################
     dpo_epochs = 3
     beta = 0.1
 
 
-tokenizer = Tokenizer(filename="./model/vocab.txt", min_occur_cnt=10)
+tokenizer = Tokenizer(filename="./model/vocab.txt", min_occur_cnt=1)
 gpt_config = {
     "local_rank": 0,
     "vocab": tokenizer,
