@@ -150,14 +150,13 @@ class MyGPT(nn.Module):
         x = self.tok_embed(input_ids) + self.pos_embed(input_ids)
         x = self.emb_layer_norm(x)
 
-        
         # 如果 attention_mask 提供，将其转为 padding_mask
         if attention_mask is not None:
             # 将 attention_mask 转换为布尔值，标记 padding 部分
             padding_mask = ~attention_mask.bool()  # 将 0/1 掩码转换为布尔形式
         else:
             padding_mask = torch.eq(input_ids, self.vocab.padding_idx)
-        
+
         if not padding_mask.any():
             padding_mask = None
 

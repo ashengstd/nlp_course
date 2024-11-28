@@ -19,6 +19,7 @@ class Config:
     dpo_epochs = 3
     beta = 0.1
 
+
 tokenizer = Tokenizer(filename="./model/vocab.txt", min_occur_cnt=10)
 gpt_config = {
     "local_rank": 0,
