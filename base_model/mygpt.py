@@ -129,3 +129,42 @@ class MyGPT(nn.Module):
         tot_tokens = msk.float().sum().item()
         acc = (torch.eq(pred_y, truth).float() * msk).sum().item()
         return (pred_y, truth), loss, acc, nll, ppl, tot_tokens, bsz
+
+    def generate_logits(self, input_ids, attention_mask=None):
+        """
+        生成给定输入的 logits（未归一化的概率）。
+
+        Args:
+            input_ids (torch.Tensor): 输入的 token IDs，形状为 (seq_len, batch_size)。
+            attention_mask (torch.Tensor, optional): 可选的注意力掩码，形状为 (seq_len, batch_size)。
+
+        Returns:
+            torch.Tensor: 输出的 logits，形状为 (seq_len, batch_size, vocab_size)。
+        """
+        seq_len, bsz = input_ids.size()
+
+        # 获取自注意力掩码
+        self_attn_mask = self.attn_mask(seq_len)
+
+        # 嵌入 + 位置编码 + 层归一化
+        x = self.tok_embed(input_ids) + self.pos_embed(input_ids)
+        x = self.emb_layer_norm(x)
+
+        # 如果 attention_mask 提供，将其转为 padding_mask
+        if attention_mask is not None:
+            padding_mask = ~attention_mask.bool()  # 将 0/1 掩码转换为布尔形式
+        else:
+            padding_mask = torch.eq(input_ids, self.vocab.padding_idx)
+        if not padding_mask.any():
+            padding_mask = None
+
+        # 通过 Transformer 层
+        for layer in self.layers:
+            x, _, _ = layer(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask)
+
+        # 层归一化 + 非线性激活
+        x = self.one_more_layer_norm(gelu(self.one_more(x)))
+
+        # 输出 logits
+        logits = self.out_proj(x)
+        return logits

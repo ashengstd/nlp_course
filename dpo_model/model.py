@@ -1,7 +1,9 @@
 import torch
 from config import Config, LoraArguments
 from peft import LoraConfig, PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
+
+from base_model.tokenizer import Tokenizer
 
 
 class LoraModel(PeftModel):
@@ -32,7 +34,7 @@ class Model(torch.nn.Module):
         super().__init__()
         model = AutoModelForCausalLM.from_pretrained(config.gpt_model).to(config.device).eval()
         self.model = LoraModel(config, model)
-        self.tokenizer = AutoTokenizer.from_pretrained(config.gpt_model)
+        self.tokenizer = Tokenizer(filename=config.tokenizer_path, min_occur_cnt=10)
 
     def forward(self, input_ids, attention_mask):
         logits = self.model(input_ids, attention_mask)

@@ -7,6 +7,7 @@ class Config:
     # model 参数 ###########################
     # 文本生成模型,下载地址 https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat
     gpt_model = ""
+    tokenizer_path = "../model/vocab.txt"
     data_path = "../data/dpo/train_data.json"
     save_lora_path = "../ckpt/dpo/lora.pth"
     device = "cuda:0" if torch.cuda.is_available() else "cpu"

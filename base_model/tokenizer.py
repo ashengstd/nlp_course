@@ -62,6 +62,40 @@ class Tokenizer:
     def decode(self, x):
         return "".join(self.idx2token(x))
 
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True):
+        """
+        将对话消息应用到模板中，支持编码和生成提示。
+
+        :param messages: List[Dict] 对话消息列表，例如 [{'role': 'user', 'content': 'Hello'}]
+        :param tokenize: 是否将生成的模板进行编码为 token IDs。
+        :param add_generation_prompt: 是否在最后添加生成提示，如 "Assistant:"。
+        :return: 格式化后的文本或 token ID 列表。
+        """
+        # 定义角色模板
+        role_templates = {
+            "user": "User:",
+            "system": "System:",
+            "instruction": "Instruction:",  # 支持新角色
+        }
+
+        # 生成对话模板文本
+        formatted_text = ""
+        for message in messages:
+            role = role_templates.get(message["role"], "Unknown:")
+            content = message["content"]
+            formatted_text += f"{role} {content}\n"
+
+        # 添加生成提示
+        if add_generation_prompt:
+            formatted_text += "instruction: "
+
+        # 如果需要 tokenization，则返回编码后的 token ID
+        if tokenize:
+            return self.encode(formatted_text)
+
+        # 否则返回原始文本
+        return formatted_text
+
 
 class BpeTokenizer:
     def __init__(self, model_path, specials=None):

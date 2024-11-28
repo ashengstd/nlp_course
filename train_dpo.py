@@ -1,6 +1,7 @@
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
+from base_model.tokenizer import Tokenizer
 from dpo_model.config import Config
 from dpo_model.dpo import DPO
 from dpo_model.model import Model
@@ -9,11 +10,14 @@ from utils.dpo_data_load import CustomDataset
 
 
 class TrainDpo:
-    def __init__(self):
+    def __init__(self, tokenizer):
         self.config = Config()
         # 演员和评论家模型
         self.model = Model(self.config)
-        self.tokenizer = self.model.tokenizer
+        if tokenizer is None:
+            self.tokenizer = tokenizer
+        else:
+            self.tokenizer = self.model.tokenizer
         # 获得策略模型优化器, 这里使用的是lora, 不优化全量数据
         self.model_opt = Adam(self.model.parameters(), lr=self.config.lr)
         # 参考模型
@@ -43,5 +47,6 @@ class TrainDpo:
 
 
 if __name__ == "__main__":
-    train_dpo = TrainDpo()
+    tokenizer = Tokenizer(filename=Config.tokenizer_path, min_occur_cnt=10)
+    train_dpo = TrainDpo(tokenizer=tokenizer)
     train_dpo.train_dpo()

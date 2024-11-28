@@ -62,11 +62,11 @@ class CustomDataset(Dataset):
 
 
 if __name__ == "__main__":
-    from config import Config
-    from transformers import AutoTokenizer
+    from base_model.tokenizer import Tokenizer
+    from dpo_model.config import Config
 
     config = Config()
-    tokenizer = AutoTokenizer.from_pretrained(config.gpt_model)
+    tokenizer = Tokenizer(filename=config.tokenizer_path, min_occur_cnt=10)
     # 创建自定义数据集实例
     dataset = CustomDataset(config.data_path, tokenizer)
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset.collate_fn)
 
     # 使用生成器函数按需读取数据
-    for batch in data_loader:
+    for _batch in data_loader:
         print()
         # 在每个批次中进行模型训练
         # batch 包含了一个批次的样本数据
