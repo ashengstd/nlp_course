@@ -14,6 +14,7 @@
     > sft
         > subject.json
         > dev test val dir
+    > toutiao
 ```
 
 # 环境配置
@@ -68,4 +69,29 @@ bash step03.sh
 
 ```shell
 python eval.py (--model_path {model_path} --vocab_path {vocab_path} --subject {subject} --ntrain {ntrain} --fewshot)
+```
+
+# DPO
+
+训练前先在`dpo_model/config.py`修改配置
+
+```shell
+python train_dpo.py
+```
+
+推理同样使用`inference.py`，但是把代码中的`init_model`改为`init_model_dpo`
+
+# 文本分类
+
+使用今日头条数据集，放在`data/toutiao`下
+
+```shell
+Python toutiao/split.py # 分割数据，可调整比例
+bash classification.sh # 训练头条数据集的SFT模型（可选）
+```
+
+评测使用
+
+```shell
+python eval_toutiao.py {--m_path {model_path} --few_shot}
 ```
