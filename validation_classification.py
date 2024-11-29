@@ -17,7 +17,7 @@ def find_first_occurrence(model_output, target_sequences):
     return first_occurrence, first_index
 
 
-def read_and_classify(file_path):
+def vailidation(file_path, few_shot=False):
     # 定义分类code与名称的映射
     categories = {
         "100": "news_story",
@@ -42,23 +42,28 @@ def read_and_classify(file_path):
     stats = {name: {"TP": 0, "FP": 0, "FN": 0} for name in name_list}
     right_num = 0
     total_num = 0
-
+    few_shot_prompt = "新闻的类别应该是news_story、news_culture、news_entertainment、news_sports、news_finance、news_house、" "news_car、news_edu、news_tech、news_military、news_travel、news_world、stock、news_agriculture、news_game之一。"
+    prompt = (
+        "新闻的类别应该是news_story、news_culture、news_entertainment、news_sports、news_finance、news_house、" "news_car、news_edu、news_tech、news_military、news_travel、news_world、stock、news_agriculture、news_game之一。"
+        if not few_shot
+        else ""
+    )
     with open(file_path, encoding="utf-8") as file:
-        for line in file:
+        for i, line in enumerate(file):
             fields = line.strip().split("_!_")
             if len(fields) < 5:
                 continue
 
             news_id, category_code, category_name, news_title, news_keywords = fields[:5]
 
+            # few-shot learning
+            if few_shot and i < 5:
+                few_shot_prompt += f"新闻标题：{news_title}\n新闻关键词：{news_keywords}\n, 它的类别是{category_name}\n"
+                continue
             # 构建prompt
-            prompt = (
-                f"新闻标题：{news_title}\n新闻关键词：{news_keywords}\n, "
-                "它的类别应该是news_story、news_culture、news_entertainment、news_sports、news_finance、news_house、"
-                "news_car、news_edu、news_tech、news_military、news_travel、news_world、stock、news_agriculture、news_game之一。"
-                "你觉得它的类别是"
-            )
-
+            prompt = f"新闻标题：{news_title}\n新闻关键词：{news_keywords}\n, " "你觉得它的类别是"
+            if few_shot:
+                prompt = few_shot_prompt + prompt
             prompt_len = len(prompt)
             inp = [[w for w in prompt]]
             ret = greedy(lm_model, lm_vocab, device, inp, max_len)[prompt_len:]
@@ -106,6 +111,6 @@ if __name__ == "__main__":
     max_len = 100
     prompt: list[str] = []
 
-    val_set_path = "./data/toutiao/val.txt"
+    val_data_path = "./data/toutiao/val.txt"
 
-    read_and_classify(val_set_path)
+    vailidation(val_data_path)
