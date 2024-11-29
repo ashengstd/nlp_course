@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 from base_model.mygpt import MyGPT
 from base_model.optim import Optim
 from base_model.tokenizer import Tokenizer
-from utils.data import Classification_DataLoader, batchify, parse_lines_classification
+from utils.data import DataLoader, batchify, parse_lines_toutiao
 
 
 def parse_config():
@@ -72,7 +72,7 @@ def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
             line = line.strip()
             if line:
                 ds.append(line)
-    ds = parse_lines_classification(ds, lm_args.max_len, lm_args.min_len)
+    ds = parse_lines_toutiao(ds, lm_args.max_len, lm_args.min_len)
 
     batch_size = 10
     idx = 0
@@ -147,7 +147,7 @@ def run(args, local_rank):
     if args.start_from is not None:
         optimizer.load_state_dict(ckpt["optimizer"])
 
-    train_data = Classification_DataLoader(tknizer, args.train_data, args.batch_size, args.max_len, args.min_len)
+    train_data = DataLoader(tknizer, args.train_data, args.batch_size, args.max_len, args.min_len, parse_lines_toutiao)
     batch_acm = 0
     acc_acm, nll_acm, ppl_acm, ntokens_acm, nxs, npairs_acm, loss_acm = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     while True:

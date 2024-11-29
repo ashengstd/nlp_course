@@ -142,7 +142,7 @@ def run(args, local_rank):
     if args.start_from is not None:
         optimizer.load_state_dict(ckpt["optimizer"])
 
-    train_data = DataLoader(tknizer, args.train_data, args.batch_size, args.max_len, args.min_len)
+    train_data = DataLoader(tknizer, args.train_data, args.batch_size, args.max_len, args.min_len, parse_lines)
     batch_acm = 0
     acc_acm, nll_acm, ppl_acm, ntokens_acm, nxs, npairs_acm, loss_acm = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 

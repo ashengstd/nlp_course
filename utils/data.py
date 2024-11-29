@@ -61,34 +61,7 @@ def parse_lines(lines, max_len, min_len):
     return data
 
 
-class DataLoader:
-    def __init__(self, tknizer, filename, batch_size, max_len, min_len):
-        self.batch_size = batch_size
-        self.tknizer = tknizer
-        self.max_len = max_len
-        self.min_len = min_len
-        self.filename = filename
-        self.epoch_id = 0
-
-    def __iter__(self):
-        while True:
-            with open(self.filename, encoding="utf8") as stream:
-                lines = stream.readlines(BUFSIZE)
-
-                if not lines:
-                    self.epoch_id += 1
-                    continue
-
-                data = parse_lines(lines[:-1], self.max_len, self.min_len)
-                random.shuffle(data)
-
-                idx = 0
-                while idx < len(data):
-                    yield batchify(data[idx : idx + self.batch_size], self.tknizer)
-                    idx += self.batch_size
-
-
-def parse_lines_classification(lines, max_len, min_len):
+def parse_lines_toutiao(lines, max_len, min_len):
     data = []
     for line in lines:
         # 以 '_!_' 分割每行数据
@@ -109,14 +82,15 @@ def parse_lines_classification(lines, max_len, min_len):
     return data
 
 
-class Classification_DataLoader:
-    def __init__(self, tknizer, filename, batch_size, max_len, min_len):
+class DataLoader:
+    def __init__(self, tknizer, filename, batch_size, max_len, min_len, parse_func):
         self.batch_size = batch_size
         self.tknizer = tknizer
         self.max_len = max_len
         self.min_len = min_len
         self.filename = filename
         self.epoch_id = 0
+        self.parse_func = parse_func
 
     def __iter__(self):
         while True:
@@ -127,7 +101,7 @@ class Classification_DataLoader:
                     self.epoch_id += 1
                     continue
 
-                data = parse_lines_classification(lines[:-1], self.max_len, self.min_len)
+                data = self.parse_func(lines[:-1], self.max_len, self.min_len)
                 random.shuffle(data)
 
                 idx = 0
