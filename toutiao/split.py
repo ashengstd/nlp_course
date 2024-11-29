@@ -50,4 +50,4 @@ def extract_small_test_set(input_file_path, test_file_path, test_size=300):
         test_file.writelines(test_set)
 
 
-extract_small_test_set("./data/toutiao/toutiao_cat_data.txt", "./data/toutiao/test_set.txt")
+extract_small_test_set("./data/toutiao/validation.txt", "./data/toutiao/test_set.txt")

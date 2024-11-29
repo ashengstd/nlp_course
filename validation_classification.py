@@ -42,12 +42,13 @@ def vailidation(file_path, few_shot=False):
     stats = {name: {"TP": 0, "FP": 0, "FN": 0} for name in name_list}
     right_num = 0
     total_num = 0
-    few_shot_prompt = "新闻的类别应该是news_story、news_culture、news_entertainment、news_sports、news_finance、news_house、" "news_car、news_edu、news_tech、news_military、news_travel、news_world、stock、news_agriculture、news_game之一。"
-    prompt = (
+    few_shot_prompt = "以下是少样本学习的示例：\n"
+    base_prompt = (
         "新闻的类别应该是news_story、news_culture、news_entertainment、news_sports、news_finance、news_house、" "news_car、news_edu、news_tech、news_military、news_travel、news_world、stock、news_agriculture、news_game之一。"
         if not few_shot
         else ""
     )
+    few_shot_prompt = base_prompt + few_shot_prompt
     with open(file_path, encoding="utf-8") as file:
         for i, line in enumerate(file):
             fields = line.strip().split("_!_")
@@ -62,8 +63,7 @@ def vailidation(file_path, few_shot=False):
                 continue
             # 构建prompt
             prompt = f"新闻标题：{news_title}\n新闻关键词：{news_keywords}\n, " "你觉得它的类别是"
-            if few_shot:
-                prompt = few_shot_prompt + prompt
+            prompt = few_shot_prompt + prompt if few_shot else base_prompt + prompt
             prompt_len = len(prompt)
             inp = [[w for w in prompt]]
             ret = greedy(lm_model, lm_vocab, device, inp, max_len)[prompt_len:]
