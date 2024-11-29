@@ -1,4 +1,3 @@
-import argparse
 import copy
 import time
 
@@ -6,7 +5,6 @@ import torch
 
 from base_model.mygpt import MyGPT
 from base_model.tokenizer import Tokenizer
-from dpo_model.config import gpt_config
 from utils.data import s2t
 
 
@@ -16,20 +14,13 @@ def mstime():
 
 def init_model(m_path, device, vocab):
     ckpt = torch.load(m_path, map_location="cpu")
-    lm_vocab = Tokenizer(vocab, min_occur_cnt=10, specials=[])
-    lm_model = MyGPT(
-        local_rank=gpt_config["local_rank"],
-        vocab=gpt_config["vocab"],
-        embed_dim=gpt_config["embed_dim"],
-        ff_embed_dim=gpt_config["ff_embed_dim"],
-        num_heads=gpt_config["num_heads"],
-        dropout=gpt_config["dropout"],
-        layers=gpt_config["layers"],
-    )
-    lm_model.load_state_dict(ckpt)
+    lm_args = ckpt["args"]
+    lm_vocab = Tokenizer(vocab, min_occur_cnt=lm_args.min_occur_cnt, specials=[])
+    lm_model = MyGPT(device, lm_vocab, lm_args.embed_dim, lm_args.ff_embed_dim, lm_args.num_heads, lm_args.dropout, lm_args.layers)
+    lm_model.load_state_dict(ckpt["model"])
     lm_model = lm_model.to(device)
     lm_model.eval()
-    return lm_model, lm_vocab
+    return lm_model, lm_vocab, lm_args
 
 
 @torch.no_grad()
@@ -63,7 +54,7 @@ def greedy(lm_model, lm_vocab, device, s, max_len):
     # 拼接生成的 token 为文本
     generated_text = "".join(prompt[0])
 
-    return generated_text.split("<bos>")[1]
+    return generated_text.split("<bos>")[1] if "<bos>" in generated_text else generated_text
 
 
 @torch.no_grad()
@@ -108,7 +99,7 @@ def top_k_inc(lm_model, lm_vocab, device, s, max_len, k=10):
     # 拼接生成的 token 为文本
     generated_text = "".join(prompt[0])
 
-    return generated_text.split("<bos>")[1]
+    return generated_text.split("<bos>")[1] if "<bos>" in generated_text else generated_text
 
 
 @torch.no_grad()
@@ -117,11 +108,11 @@ def top_k_inc1(lm_model, lm_vocab, device, s, k, max_len):
     x, m = s2t(s, lm_vocab)
     x = x.to(device)
     res = []
-    for l in range(max_len):
+    for i in range(max_len):
         probs, pred, incremental_state = lm_model.work_incremental(x, incremental_state)
         next_tk = []
         for i in range(len(s)):
-            logits = probs[len(s[i]) - 1, i] if l == 0 else probs[0, i]
+            logits = probs[len(s[i]) - 1, i] if i == 0 else probs[0, i]
             ps, idx = torch.topk(logits, k=k)
             ps = ps / torch.sum(ps)
             sampled = torch.multinomial(ps, num_samples=1)
@@ -145,57 +136,3 @@ def top_k_inc1(lm_model, lm_vocab, device, s, k, max_len):
     res += s_
     r = "".join(res[0])
     return r.split("<bos>")[1] if "<bos>" in r else r
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Generate dialogue using GPT model")
-    parser.add_argument("--model_path", type=str, default="./ckpt/dpo/lora.pth", help="Path to the model checkpoint")
-    parser.add_argument("--vocab_path", type=str, default="./model/vocab.txt", help="Path to the vocab file")
-    parser.add_argument("--max_len", type=int, default=80, help="Maximum length of generated text")
-    return parser.parse_args()
-
-
-def generate_responses(lm_model, lm_vocab, device, questions, max_len):
-    for i, q in enumerate(questions):
-        start = mstime()
-        s = [[w for w in q]]
-        s[0].insert(0, "<bos>")
-
-        print(i + 1)
-        print("q: ", q)
-
-        # Generate responses using different methods
-        r1 = greedy(lm_model=lm_model, lm_vocab=lm_vocab, device=device, s=s, max_len=max_len)
-        print("greedy: ", r1)
-        r3 = top_k_inc(lm_model=lm_model, lm_vocab=lm_vocab, device=device, s=s, max_len=max_len, k=5)
-        print("tk5: ", r3)
-
-        r6 = top_k_inc(lm_model=lm_model, lm_vocab=lm_vocab, device=device, s=s, max_len=max_len, k=50)
-        print("tk50: ", r6)
-        r7 = top_k_inc(lm_model=lm_model, lm_vocab=lm_vocab, device=device, s=s, max_len=max_len, k=500)
-        print("tk500: ", r7)
-
-        print("Time taken: ", mstime() - start)
-
-
-if __name__ == "__main__":
-    args = parse_args()  # Parse command line arguments
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Predefined questions
-    questions = [
-        # "给你两个角色信息如下：\nA：王明，一个即将毕业的大学生，拥有广泛的兴趣爱好，包括电影、音乐和文学。\nB：张伟，一个广告公司的创意总监，擅长表达和沟通。\n生成他们之间的一段对话，要求对话内容详细丰富。",
-        # "请描述一下自然语言处理的主要任务，并简要介绍每个任务的应用场景。",
-        # "如何在机器学习模型中处理缺失值？列举几种常用方法。",
-        # "请简单介绍一下 GPT 和 BERT 的区别以及它们的应用。",
-        # "给定一段中文文本，如何通过深度学习模型进行情感分析？",
-        "小明原先有12支铅笔，他拿出了3支铅笔送给同学，剩余的铅笔数可以用减法来计算。即： \n剩余铅笔数 = 原先铅笔数 - 送出的铅笔数 \n所以，剩余的铅笔数 = ",
-    ]
-
-    # Load the model and vocab using the parsed paths
-    print("Loading model and vocab...")
-    lm_model, lm_vocab = init_model(args.model_path, device, args.vocab_path)
-    print("Model and vocab loaded.")
-
-    # Generate responses for the predefined questions
-    generate_responses(lm_model, lm_vocab, device, questions, args.max_len)

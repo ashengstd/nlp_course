@@ -26,9 +26,7 @@ class toutiao_evaluator(Evaluator):
     def __init__(self, model_path, vocab_path, choices, device, k=-1) -> None:
         self.device = device
         self.tokenizer = Tokenizer(vocab_path, min_occur_cnt=1, specials=[])
-        self.model = MyGPT(
-            local_rank=0, vocab=self.tokenizer, embed_dim=768, ff_embed_dim=3072, num_heads=12, dropout=0.2, layers=12
-        )
+        self.model = MyGPT(local_rank=0, vocab=self.tokenizer, embed_dim=768, ff_embed_dim=3072, num_heads=12, dropout=0.2, layers=12)
         ckpt = torch.load(model_path, map_location="cpu")
         self.model.load_state_dict(ckpt["model"])
         self.model.cuda()
@@ -74,9 +72,7 @@ class toutiao_evaluator(Evaluator):
             example += f'\n{choice}. {line[f"{choice}"]}'
         if include_answer:
             if cot:
-                example += (
-                    "\n答案：让我们一步一步思考，\n" + line["explanation"] + f"\n所以答案是{line['answer']}。\n\n"
-                )
+                example += "\n答案：让我们一步一步思考，\n" + line["explanation"] + f"\n所以答案是{line['answer']}。\n\n"
             else:
                 example += "\n答案：" + line["answer"] + "\n\n"
         else:
@@ -87,7 +83,7 @@ class toutiao_evaluator(Evaluator):
         return example
 
     def generate_few_shot_prompt(self, subject, dev_df, cot=False):
-        prompt = f"以下是个分类任务，请给出正确的类别: \n\n"
+        prompt = "以下是个分类任务，请给出正确的类别: \n\n"
         k = self.k
         if self.k == -1:
             k = dev_df.shape[0]
@@ -95,9 +91,7 @@ class toutiao_evaluator(Evaluator):
             prompt += self.format_example(dev_df.iloc[i, :], include_answer=True, cot=cot)
         return prompt
 
-    def generate(
-        self, prompt: str, max_gen_len: int, temperature: float = 0.8, top_p: float = 0.95, return_logits: bool = False
-    ) -> list[str]:
+    def generate(self, prompt: str, max_gen_len: int, temperature: float = 0.8, top_p: float = 0.95, return_logits: bool = False) -> list[str]:
         # params = self.model.params
         prompt = BOS + prompt
         prompt_tokens = self.tokenizer.encode(prompt)
@@ -162,9 +156,7 @@ class toutiao_evaluator(Evaluator):
         else:
             return pred.get(model_answer, model_answer), 0
 
-    def eval_subject(
-        self, subject_name, test_df, dev_df=None, few_shot=False, save_result_dir=None, cot=False, **kwargs
-    ):
+    def eval_subject(self, subject_name, test_df, dev_df=None, few_shot=False, save_result_dir=None, cot=False, **kwargs):
         result = []
         score = []
         few_shot_prompt = self.generate_few_shot_prompt(subject_name, dev_df, cot=cot) if few_shot else ""
@@ -189,7 +181,7 @@ class toutiao_evaluator(Evaluator):
                     torch.nn.functional.softmax(
                         torch.tensor(
                             [
-                                ],
+                                logits[self.tokenizer.encode("A")],
                                 logits[self.tokenizer.encode("B")],
                                 logits[self.tokenizer.encode("C")],
                                 logits[self.tokenizer.encode("D")],

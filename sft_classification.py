@@ -1,60 +1,58 @@
+import argparse
+import os
+import random
+
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from base_model.mygpt import MyGPT
-from base_model.tokenizer import Tokenizer
-from utils.data import DataLoader_classification, batchify, parse_lines_classification
 from base_model.optim import Optim
-
-import argparse, os
-import random
+from base_model.tokenizer import Tokenizer
+from utils.data import Classification_DataLoader, batchify, parse_lines_classification
 
 
 def parse_config():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--embed_dim', type=int)
-    parser.add_argument('--ff_embed_dim', type=int)
-    parser.add_argument('--num_heads', type=int)
-    parser.add_argument('--layers', type=int)
-    parser.add_argument('--dropout', type=float)
-
-    parser.add_argument('--train_data', type=str)
-    parser.add_argument('--dev_data', type=str)
-    parser.add_argument('--vocab', type=str)
-    parser.add_argument('--min_occur_cnt', type=int)
-    parser.add_argument('--batch_size', type=int)
-    parser.add_argument('--warmup_steps', type=int)
-    parser.add_argument('--lr', type=float)
-    parser.add_argument('--smoothing', type=float)
-    parser.add_argument('--weight_decay', type=float)
-    parser.add_argument('--max_len', type=int)
-    parser.add_argument('--min_len', type=int)
-    parser.add_argument('--print_every', type=int)
-    parser.add_argument('--save_every', type=int)
-    parser.add_argument('--epoch', type=int)
-    parser.add_argument('--start_from', type=str, default=None)
-    parser.add_argument('--save_dir', type=str)
-
-    parser.add_argument('--approx', type=str, default='none')
-    parser.add_argument('--fp16', action='store_true')
-    parser.add_argument('--world_size', type=int)
-    parser.add_argument('--gpus', type=int)
-    parser.add_argument('--MASTER_ADDR', type=str)
-    parser.add_argument('--MASTER_PORT', type=str)
-    parser.add_argument('--start_rank', type=int)
-    parser.add_argument('--backend', type=str)
-
+    parser.add_argument("--tokenizer_type", type=str, default="char", choices=["char", "bpe"])
+    parser.add_argument("--embed_dim", type=int, default=768)
+    parser.add_argument("--ff_embed_dim", type=int, default=3072)
+    parser.add_argument("--num_heads", type=int, default=12)
+    parser.add_argument("--layers", type=int, default=12)
+    parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--train_data", type=str, default="./data/pretrain/train.txt")
+    parser.add_argument("--dev_data", type=str, default="./data/pretrain/val_tiny.txt")
+    parser.add_argument("--vocab", type=str, default="./model/vocab.txt")
+    parser.add_argument("--min_occur_cnt", type=int, default=1)
+    parser.add_argument("--batch_size", type=int, default=20)
+    parser.add_argument("--warmup_steps", type=int, default=10000)
+    parser.add_argument("--lr", type=float, default=1)
+    parser.add_argument("--smoothing", type=float, default=0.1)
+    parser.add_argument("--weight_decay", type=float, default=0)
+    parser.add_argument("--max_len", type=int, default=256)
+    parser.add_argument("--min_len", type=int, default=10)
+    parser.add_argument("--print_every", type=int, default=100)
+    parser.add_argument("--save_every", type=int, default=10000)
+    parser.add_argument("--epoch", type=int, default=100)
+    parser.add_argument("--start_from", type=str, default=None)
+    parser.add_argument("--save_dir", type=str, default="ckpt")
+    parser.add_argument("--approx", type=str, default="none")
+    parser.add_argument("--fp16", action="store_true")
+    parser.add_argument("--world_size", type=int, default=1)
+    parser.add_argument("--gpus", type=int, default=1)
+    parser.add_argument("--MASTER_ADDR", type=str, default="localhost")
+    parser.add_argument("--MASTER_PORT", type=str, default="25555")
+    parser.add_argument("--start_rank", type=int, default=0)
+    parser.add_argument("--backend", type=str, default="nccl")
     return parser.parse_args()
 
 
 def update_lr(optimizer, lr):
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        param_group["lr"] = lr
 
 
 def average_gradients(model):
-    '''Gradient averaging.'''
     normal = True
     size = float(dist.get_world_size())
     for param in model.parameters():
@@ -69,7 +67,7 @@ def average_gradients(model):
 
 def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
     ds = []
-    with open(lm_args.dev_data, "r") as f:
+    with open(lm_args.dev_data) as f:
         for line in f:
             line = line.strip()
             if line:
@@ -77,15 +75,12 @@ def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
     ds = parse_lines_classification(ds, lm_args.max_len, lm_args.min_len)
 
     batch_size = 10
-    batches = round(len(ds) / batch_size)
     idx = 0
-    avg_nll = 0.
-    avg_ppl = 0.
-    avg_acc = 0.
-    count_bsz = 0.
-    count_tok = 0.
+    avg_nll, avg_ppl, avg_acc = 0.0, 0.0, 0.0
+    count_bsz, count_tok = 0.0, 0.0
+
     while idx < len(ds):
-        ys_truth, ys_inp, msk = batchify(ds[idx:idx + batch_size], tknizer)
+        ys_truth, ys_inp, msk = batchify(ds[idx : idx + batch_size], tknizer)
 
         ys_truth = ys_truth.cuda(local_rank)
         ys_inp = ys_inp.cuda(local_rank)
@@ -101,36 +96,60 @@ def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
 
         idx += batch_size
 
-    print('validating: label %s, batch_acm %d, acc %.6f, nll %.6f, ppl %.6f'
-          % (label, batch_acm, avg_acc / count_tok, avg_nll / count_bsz, avg_ppl / count_bsz), flush=True)
+    print(
+        f"validating: label {label}, batch_acm {batch_acm}, " f"acc {avg_acc / count_tok:.6f}, nll {avg_nll / count_bsz:.6f}, " f"ppl {avg_ppl / count_bsz:.6f}",
+        flush=True,
+    )
+
+
+def save_model(args, model, optimizer, train_data, batch_acm):
+    if not os.path.exists(args.save_dir):
+        os.mkdir(args.save_dir)
+
+    # for filename in os.listdir(args.save_dir):
+    #     file_path = os.path.join(args.save_dir, filename)
+    #     if os.path.isfile(file_path):
+    #         os.remove(file_path)
+
+    torch.save(
+        {"args": args, "model": model.state_dict(), "optimizer": optimizer.state_dict()},
+        f"{args.save_dir}/epoch{train_data.epoch_id}_batch_{batch_acm}",
+    )
 
 
 def run(args, local_rank):
-    train_log = open("train_log.txt", "w")
-    """ Distributed Synchronous """
     torch.manual_seed(1234)
+
     tknizer = Tokenizer(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[])
-    if (args.world_size == 1 or dist.get_rank() == 0):
-        print("vocab.size:=%d" % tknizer.size, flush=True)
-    model = MyGPT(local_rank, tknizer, args.embed_dim, args.ff_embed_dim,args.num_heads, args.dropout, args.layers)
+
+    if args.world_size == 1 or dist.get_rank() == 0:
+        print(f"vocab.size = {tknizer.size}", flush=True)
+
+    model = MyGPT(local_rank, tknizer, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
+
     if args.start_from is not None:
-        ckpt = torch.load(args.start_from, map_location='cpu')
-        model.load_state_dict(ckpt['model'])
+        ckpt = torch.load(args.start_from, map_location="cpu")
+        model.load_state_dict(ckpt["model"])
+
     model = model.cuda(local_rank)
 
     if args.world_size > 1:
         torch.manual_seed(1234 + dist.get_rank())
         random.seed(5678 + dist.get_rank())
 
-    optimizer = Optim(model.embed_dim, args.lr, args.warmup_steps,
-                      torch.optim.AdamW(model.parameters(), lr=0, betas=(0.9, 0.998), eps=1e-9))
+    optimizer = Optim(
+        model.embed_dim,
+        args.lr,
+        args.warmup_steps,
+        torch.optim.AdamW(model.parameters(), lr=0, betas=(0.9, 0.998), eps=1e-9),
+    )
 
     if args.start_from is not None:
-        optimizer.load_state_dict(ckpt['optimizer'])
+        optimizer.load_state_dict(ckpt["optimizer"])
 
-    train_data = DataLoader_classification(tknizer, args.train_data, args.batch_size, args.max_len, args.min_len)
+    train_data = Classification_DataLoader(tknizer, args.train_data, args.batch_size, args.max_len, args.min_len)
     batch_acm = 0
-    acc_acm, nll_acm, ppl_acm, ntokens_acm, nxs, npairs_acm, loss_acm = 0., 0., 0., 0., 0., 0., 0.
+    acc_acm, nll_acm, ppl_acm, ntokens_acm, nxs, npairs_acm, loss_acm = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     while True:
         if train_data.epoch_id > args.epoch:
             break
@@ -142,7 +161,6 @@ def run(args, local_rank):
             msk = msk.cuda(local_rank)
             model.zero_grad()
             res, loss, acc, nll, ppl, ntokens, npairs = model(truth, inp, msk)
-            train_log.write("iter:"+ str(iter)+" loss:"+str(loss) + " nll:" +str(nll)+ " ppl:" + str(ppl)+"\n")
             loss_acm += loss.item()
             acc_acm += acc
             nll_acm += nll
@@ -157,34 +175,30 @@ def run(args, local_rank):
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
-            if (args.world_size == 1 or dist.get_rank() == 0) and batch_acm % args.print_every == - 1 % args.print_every:
-                print('batch_acm %d,loss %.3f, acc %.3f, nll %.3f, ppl %.3f, x_acm %d,lr %.6f'
-                      % (batch_acm, loss_acm / args.print_every, acc_acm / ntokens_acm,
-                         nll_acm / nxs, ppl_acm / nxs, npairs_acm, optimizer._rate), flush=True)
-                acc_acm, nll_acm, ppl_acm, ntokens_acm, loss_acm, nxs = 0., 0., 0., 0., 0., 0.
+            if (args.world_size == 1 or dist.get_rank() == 0) and batch_acm % args.print_every == -1 % args.print_every:
+                print(
+                    (f"batch_acm {batch_acm}, loss {loss_acm / args.print_every:.3f}, " f"acc {acc_acm / ntokens_acm:.3f}, nll {nll_acm / nxs:.3f}, " f"ppl {ppl_acm / nxs:.3f}, x_acm {npairs_acm}, lr {optimizer._rate:.6f}"),
+                    flush=True,
+                )
+                acc_acm, nll_acm, ppl_acm, ntokens_acm, loss_acm, nxs = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
             if (args.world_size == 1 or dist.get_rank() == 0) and batch_acm % args.save_every == -1 % args.save_every:
-                if not os.path.exists(args.save_dir):
-                    os.mkdir(args.save_dir)
-                torch.save({'args': args, 'model': model.state_dict(), 'optimizer': optimizer.state_dict()},
-                           '%s/epoch%d_batch_%d' % (args.save_dir, train_data.epoch_id, batch_acm))
-
+                save_model(args, model, optimizer, train_data, batch_acm)
                 model.eval()
-                eval_epoch(args, model, tknizer, local_rank,
-                           "epoch-" + str(train_data.epoch_id) + "-acm-" + str(batch_acm), batch_acm)
+                eval_epoch(args, model, tknizer, local_rank, "epoch-" + str(train_data.epoch_id) + "-acm-" + str(batch_acm), batch_acm)
                 model.train()
 
 
-def init_processes(args, local_rank, fn, backend='nccl'):
-    """ Initialize the distributed environment. """
-    os.environ['MASTER_ADDR'] = args.MASTER_ADDR
-    os.environ['MASTER_PORT'] = args.MASTER_PORT
+def init_processes(args, local_rank, fn, backend="nccl"):
+    """Initialize the distributed environment."""
+    os.environ["MASTER_ADDR"] = args.MASTER_ADDR
+    os.environ["MASTER_PORT"] = args.MASTER_PORT
     dist.init_process_group(backend, rank=args.start_rank + local_rank, world_size=args.world_size)
     fn(args, local_rank)
 
 
 if __name__ == "__main__":
-    mp.set_start_method('spawn')
+    mp.set_start_method("spawn")
     args = parse_config()
     if args.world_size == 1:
         run(args, 0)

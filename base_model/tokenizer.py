@@ -9,16 +9,15 @@ BSY, ESY = "<SYS>", "</SYS>"
 
 class Tokenizer:
     def __init__(self, filename, min_occur_cnt, specials=None):
-        idx2token = (
-            [PAD, UNK, BOS, EOS] + [LS, RS, SP, BINST, EINST, BSY, ESY] + (specials if specials is not None else [])
-        )
-        for line in open(filename, encoding="utf-8").readlines():
-            try:
-                token, cnt = line.strip().split()
-            except Exception:
-                continue
-            if int(cnt) >= min_occur_cnt:
-                idx2token.append(token)
+        idx2token = [PAD, UNK, BOS, EOS] + [LS, RS, SP, BINST, EINST, BSY, ESY] + (specials if specials is not None else [])
+        with open(filename, encoding="utf-8") as file:
+            for line in file.readlines():
+                try:
+                    token, cnt = line.strip().split()
+                except Exception:
+                    continue
+                if int(cnt) >= min_occur_cnt:
+                    idx2token.append(token)
         self._token2idx = dict(zip(idx2token, range(len(idx2token)), strict=False))
         self._idx2token = idx2token
         self._padding_idx = self._token2idx[PAD]
@@ -155,10 +154,7 @@ class BpeTokenizer:
 
 
 if __name__ == "__main__":
-    text = (
-        "南京航空航天大学是一所坐落在南京的双一流大学, "
-        "Nanjing University of Aeronautics and Astronautics is a double first-class university located in Nanjing."
-    )
+    text = "南京航空航天大学是一所坐落在南京的双一流大学, " "Nanjing University of Aeronautics and Astronautics is a double first-class university located in Nanjing."
     # tokenizer = Tokenizer("./model/vocab.txt", min_occur_cnt=50)
     tokenizer = BpeTokenizer("./model/m.model")
 

@@ -28,7 +28,7 @@ explicit = true
 
 [tool.ruff]
 exclude = [".venv"]
-line-length = 120
+line-length = 240
 
 [tool.ruff.lint]
 select = [

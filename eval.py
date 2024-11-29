@@ -15,9 +15,7 @@ def main(args):
     # evaluator = myGPT_Evaluator(
     #     choices=choices, model_path=args.model_path, vocab_path=args.vocab_path, device=args.device, k=args.ntrain
     # )
-    evaluator = MyEvaluator(
-        choices=choices, model_path=args.model_path, vocab_path=args.vocab_path, device=args.device, k=args.ntrain
-    )
+    evaluator = MyEvaluator(choices=choices, model_path=args.model_path, vocab_path=args.vocab_path, device=args.device, k=args.ntrain)
     if args.subject == "all":
         with open("./data/ceval/subjects.json", encoding="utf-8") as file:
             data = json.load(file)  # 解析 JSON 数据
@@ -52,9 +50,7 @@ def main(args):
                 cot=False,
             )
         else:
-            correct_ratio = evaluator.eval_subject(
-                subject_name, val_df, few_shot=args.few_shot, save_result_dir=save_result_dir, constrained_decoding=True
-            )
+            correct_ratio = evaluator.eval_subject(subject_name, val_df, few_shot=args.few_shot, save_result_dir=save_result_dir, constrained_decoding=True)
             average_correct_ratio += correct_ratio
         print("Acc:", correct_ratio)
 

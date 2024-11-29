@@ -92,9 +92,7 @@ def eval_epoch(lm_args, model, tknizer, local_rank, label, batch_acm):
         idx += batch_size
 
     print(
-        f"validating: label {label}, batch_acm {batch_acm}, "
-        f"acc {avg_acc / count_tok:.6f}, nll {avg_nll / count_bsz:.6f}, "
-        f"ppl {avg_ppl / count_bsz:.6f}",
+        f"validating: label {label}, batch_acm {batch_acm}, " f"acc {avg_acc / count_tok:.6f}, nll {avg_nll / count_bsz:.6f}, " f"ppl {avg_ppl / count_bsz:.6f}",
         flush=True,
     )
 
@@ -116,18 +114,18 @@ def save_model(args, model, optimizer, train_data, batch_acm):
 
 def run(args, local_rank):
     torch.manual_seed(1234)
-    tknizer = (
-        Tokenizer(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[])
-        if args.tokenizer_type == "char"
-        else BpeTokenizer(args.vocab, specials=[])
-    )
+
+    tknizer = Tokenizer(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[]) if args.tokenizer_type == "char" else BpeTokenizer(args.vocab, specials=[])
+
     if args.world_size == 1 or dist.get_rank() == 0:
         print(f"vocab.size = {tknizer.size}", flush=True)
 
     model = MyGPT(local_rank, tknizer, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
+
     if args.start_from is not None:
         ckpt = torch.load(args.start_from, map_location="cpu")
         model.load_state_dict(ckpt["model"])
+
     model = model.cuda(local_rank)
 
     if args.world_size > 1:
@@ -152,7 +150,7 @@ def run(args, local_rank):
         model.train()
         for truth, inp, msk in train_data:
             batch_acm += 1
-            print(inp.shape,msk.shape)
+            print(inp.shape, msk.shape)
             truth, inp, msk = truth.cuda(local_rank), inp.cuda(local_rank), msk.cuda(local_rank)
 
             model.zero_grad()
@@ -173,11 +171,7 @@ def run(args, local_rank):
 
             if (args.world_size == 1 or dist.get_rank() == 0) and batch_acm % args.print_every == 0:
                 print(
-                    (
-                        f"batch_acm {batch_acm}, loss {loss_acm / args.print_every:.3f}, "
-                        f"acc {acc_acm / ntokens_acm:.3f}, nll {nll_acm / nxs:.3f}, "
-                        f"ppl {ppl_acm / nxs:.3f}, x_acm {npairs_acm}, lr {optimizer._rate:.6f}"
-                    ),
+                    (f"batch_acm {batch_acm}, loss {loss_acm / args.print_every:.3f}, " f"acc {acc_acm / ntokens_acm:.3f}, nll {nll_acm / nxs:.3f}, " f"ppl {ppl_acm / nxs:.3f}, x_acm {npairs_acm}, lr {optimizer._rate:.6f}"),
                     flush=True,
                 )
                 acc_acm, nll_acm, ppl_acm, ntokens_acm, loss_acm, nxs = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0

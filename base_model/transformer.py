@@ -128,9 +128,7 @@ class MultiheadAttention(nn.Module):
         nn.init.constant_(self.in_proj_bias, 0.0)
         nn.init.constant_(self.out_proj.bias, 0.0)
 
-    def forward(
-        self, query, key, value, key_padding_mask=None, attn_mask=None, need_weights=False, incremental_state=None
-    ):
+    def forward(self, query, key, value, key_padding_mask=None, attn_mask=None, need_weights=False, incremental_state=None):
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
             bidx = self._get_bidx(incremental_state)

@@ -99,9 +99,7 @@ class MyGPT(nn.Module):
             self_attn_mask = None
 
         for layer in self.layers:
-            x, _, _ = layer.work_incremental(
-                x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask, incremental_state=incremental_state
-            )
+            x, _, _ = layer.work_incremental(x, self_padding_mask=padding_mask, self_attn_mask=self_attn_mask, incremental_state=incremental_state)
 
         x = self.one_more_layer_norm(gelu(self.one_more(x)))
         probs = torch.softmax(self.out_proj(x), -1)
@@ -142,4 +140,3 @@ class MyGPT(nn.Module):
         x = self.one_more_layer_norm(gelu(self.one_more(x)))
         x = self.out_proj(x)
         return x
-

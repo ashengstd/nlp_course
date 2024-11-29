@@ -46,9 +46,7 @@ class DPO:
             chosen_data = torch.cat(logps[len_chosen:])
             return rejected_data, chosen_data
 
-        policy_rejected_logps, policy_chosen_logps = concat_probs(
-            policy_logps
-        )  # 计算合理数据的logps和不合理数据的logps
+        policy_rejected_logps, policy_chosen_logps = concat_probs(policy_logps)  # 计算合理数据的logps和不合理数据的logps
         ref_rejected_logps, ref_chosen_logps = concat_probs(ref_logps)
         pi_logratios = policy_chosen_logps - policy_rejected_logps
         ref_logratios = ref_chosen_logps - ref_rejected_logps
@@ -65,13 +63,9 @@ class DPO:
 
     @staticmethod
     def filter_mask(values, labels_masks):
-        
         """
         :param values: 一般是prob_old、prob_ref、value(价值)的值
         :param labels_masks:label 对应的mask
         :return: 去除padding之后的数据
         """
-        return [
-            value[one_response_ids_mask[:-1] == 1].sum().unsqueeze(0)
-            for value, one_response_ids_mask in zip(values, labels_masks, strict=False)
-        ]
+        return [value[one_response_ids_mask[:-1] == 1].sum().unsqueeze(0) for value, one_response_ids_mask in zip(values, labels_masks, strict=False)]
