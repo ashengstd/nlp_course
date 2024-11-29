@@ -1,7 +1,7 @@
 mkdir -p './ckpt/sft/'
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-python -u sft_classification.py --embed_dim 768 \
+python -u classification.py --embed_dim 768 \
                       --ff_embed_dim 3072 \
                       --num_heads 12 \
                       --layers 12 \
