@@ -36,7 +36,7 @@ def read_and_classify(file_path):
         "115": "news_agriculture",
         "116": "news_game",
     }
-    name_list = categories.values()
+    name_list = list(categories.values())
 
     # 初始化统计数据
     stats = {name: {"TP": 0, "FP": 0, "FN": 0} for name in name_list}
@@ -59,8 +59,9 @@ def read_and_classify(file_path):
                 "你觉得它的类别是"
             )
 
+            prompt_len = len(prompt)
             inp = [[w for w in prompt]]
-            ret = greedy(lm_model, lm_vocab, device, inp, max_len)
+            ret = greedy(lm_model, lm_vocab, device, inp, max_len)[prompt_len:]
             print("大预言模型预测结果：", ret)
 
             # 从预测结果中找到最先出现的目标子字符串

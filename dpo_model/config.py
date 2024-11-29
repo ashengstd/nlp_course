@@ -6,14 +6,12 @@ from base_model.tokenizer import Tokenizer
 
 
 class Config:
-    # model 参数 ###########################
-    # 文本生成模型,下载地址 https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat
     gpt_model = "./epoch1_batch_15000"
     data_path = "./data/dpo/train_data.json"
-    save_lora_path = "./ckpt/dpo/lora.pth"
+    save_lora_path = "./ckpt/dpo/dpo.pth"
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    batch_size = 1
-    epochs = 1
+    batch_size = 2
+    epochs = 3
     lr = 0.001
     # DPO 参数 ############################
     dpo_epochs = 3

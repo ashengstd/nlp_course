@@ -5,6 +5,7 @@ import torch
 
 from base_model.mygpt import MyGPT
 from base_model.tokenizer import Tokenizer
+from dpo_model.config import gpt_config
 from utils.data import s2t
 
 
@@ -21,6 +22,24 @@ def init_model(m_path, device, vocab):
     lm_model = lm_model.to(device)
     lm_model.eval()
     return lm_model, lm_vocab, lm_args
+
+
+def init_dpo_model(m_path, device, vocab):
+    ckpt = torch.load(m_path, map_location="cpu")
+    lm_vocab = Tokenizer(vocab, min_occur_cnt=10, specials=[])
+    lm_model = MyGPT(
+        local_rank=gpt_config["local_rank"],
+        vocab=gpt_config["vocab"],
+        embed_dim=gpt_config["embed_dim"],
+        ff_embed_dim=gpt_config["ff_embed_dim"],
+        num_heads=gpt_config["num_heads"],
+        dropout=gpt_config["dropout"],
+        layers=gpt_config["layers"],
+    )
+    lm_model.load_state_dict(ckpt)
+    lm_model = lm_model.to(device)
+    lm_model.eval()
+    return lm_model, lm_vocab
 
 
 @torch.no_grad()
